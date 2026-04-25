@@ -780,6 +780,130 @@ label{
   .card-val,.kpi-value,td,th{color:#000!important;}
 }
 
+/* ===== NUMERIC FONT UPGRADE (MELHORIA 1) ===== */
+/* Todos os valores numéricos financeiros usam Orbitron/Space Grotesk — mais largos, volumosos e legíveis */
+.card-val, .kpi-value, .flow-step-val, .month-col-val {
+  font-family: 'Orbitron', 'Exo 2', sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.5px !important;
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: inline-block;
+  text-shadow: 0 0 18px currentColor;
+}
+.card-val { font-size: 28px !important; }
+.kpi-value { font-size: 26px !important; }
+.flow-step-val { font-size: 24px !important; }
+.month-col-val { font-size: 26px !important; }
+
+/* Numeric cells in tables */
+.mono {
+  font-family: 'Orbitron', 'Share Tech Mono', monospace !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  font-size: 12.5px !important;
+}
+
+/* ===== HOVER VERDE CLARO (MELHORIA 3) ===== */
+/* Substituir hover laranja por verde neon de alto contraste */
+.card:hover {
+  border-color: rgba(0,255,156,.4) !important;
+  box-shadow: 0 0 24px rgba(0,255,156,.15), 0 12px 35px rgba(0,0,0,.4) !important;
+}
+.kpi-card:hover {
+  border-color: rgba(0,255,156,.4) !important;
+  box-shadow: 0 0 28px rgba(0,255,156,.18), 0 20px 50px rgba(0,0,0,.5) !important;
+}
+tr:hover td { background: rgba(0,255,156,.025) !important; }
+.hbtn:hover {
+  background: rgba(0,255,156,.1) !important;
+  color: #00FF9C !important;
+  border-color: rgba(0,255,156,.5) !important;
+  box-shadow: 0 0 14px rgba(0,255,156,.2) !important;
+}
+.btn:hover:not(.btn-primary):not(.btn-danger):not(.btn-emerald):not(.btn-amber):not(.btn-sky) {
+  background: rgba(0,255,156,.1) !important;
+  color: #00FF9C !important;
+  border-color: rgba(0,255,156,.4) !important;
+}
+.nav-item:hover {
+  background: rgba(0,255,156,.07) !important;
+  color: #00FF9C !important;
+  border-color: rgba(0,255,156,.3) !important;
+  box-shadow: 0 0 14px rgba(0,255,156,.1) !important;
+}
+
+/* ===== DESPESA FIXA vs VARIÁVEL (MELHORIA 5) ===== */
+.desp-tipo-radios { display: flex; gap: 10px; margin-top: 4px; }
+.desp-tipo-btn {
+  flex: 1; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border2); background: var(--surface2);
+  color: var(--text2); font-size: 12px; font-weight: 600; text-align: center;
+  transition: all .2s var(--ease);
+}
+.desp-tipo-btn.sel-fixa { background: rgba(155,109,255,.15); border-color: var(--violet); color: var(--violet); }
+.desp-tipo-btn.sel-variavel { background: rgba(255,184,48,.12); border-color: var(--amber); color: var(--amber); }
+.badge-fixa { background: rgba(155,109,255,.12); color: var(--violet); }
+.badge-variavel { background: rgba(255,184,48,.12); color: var(--amber); }
+
+/* Fixas vs variáveis dashboard section */
+.fv-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; margin-bottom: 18px; }
+.fv-bar-wrap { height: 24px; border-radius: 12px; overflow: hidden; background: var(--surface2); display: flex; margin: 10px 0; }
+.fv-bar-fixa { background: linear-gradient(90deg,var(--violet),#7C3AED); height: 100%; transition: width .5s var(--ease); }
+.fv-bar-variavel { background: linear-gradient(90deg,var(--amber),#CC8800); height: 100%; transition: width .5s var(--ease); }
+.fv-legend { display: flex; gap: 20px; flex-wrap: wrap; }
+.fv-leg-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.fv-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+/* ===== ADVANCED REPORTS (MELHORIA 6) ===== */
+.adv-report-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px; margin-bottom: 18px;
+  box-shadow: 0 0 15px var(--orange-glow2);
+}
+.adv-report-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 2.5px;
+  color: #BCC5D8; font-weight: 700; margin-bottom: 18px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  font-family: 'Orbitron', sans-serif;
+}
+.scenario-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 14px; }
+.scenario-card {
+  padding: 16px; border-radius: 12px; border: 1px solid var(--border2); text-align: center;
+}
+.scenario-card.otimista { background: rgba(0,229,160,.06); border-color: rgba(0,229,160,.3); }
+.scenario-card.realista { background: rgba(255,184,48,.06); border-color: rgba(255,184,48,.3); }
+.scenario-card.pessimista { background: rgba(255,77,106,.06); border-color: rgba(255,77,106,.3); }
+.scenario-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; margin-bottom: 8px; }
+.scenario-value { font-family: 'Orbitron', sans-serif; font-size: 18px; font-weight: 700; }
+.whatif-section { background: var(--bg2); border-radius: 10px; padding: 16px; margin-top: 14px; }
+.whatif-slider { width: 100%; margin: 8px 0; accent-color: var(--orange); }
+.kpi-adv-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
+.kpi-adv-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px; text-align: center; position: relative; overflow: hidden;
+}
+.kpi-adv-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: #BCC5D8; font-weight: 700; margin-bottom: 10px; }
+.kpi-adv-value { font-family: 'Orbitron', sans-serif; font-size: 22px; font-weight: 700; }
+@media(max-width:900px){ .scenario-grid{grid-template-columns:1fr;} .kpi-adv-grid{grid-template-columns:repeat(2,1fr);} }
+
+/* ===== SUBTIPO STYLE (MELHORIA 4) ===== */
+.subtipo-tag {
+  font-size: 9px; background: rgba(56,205,255,.1); color: var(--sky);
+  border: 1px solid rgba(56,205,255,.2); border-radius: 12px;
+  padding: 2px 8px; font-weight: 700; letter-spacing: .5px;
+  margin-left: 5px;
+}
+.cfg-subtipo-list { padding-left: 20px; margin-top: 4px; }
+.cfg-subtipo-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; font-size: 11px; color: var(--text2);
+  border-bottom: 1px solid rgba(30,34,45,.4);
+}
+.cfg-subtipo-item:last-child { border-bottom: none; }
+.cfg-subtipo-name { flex: 1; }
+
+
 /* ===== DASHBOARD EXTRAS ===== */
 .chart-card canvas { max-height: 200px; }
 
@@ -993,9 +1117,16 @@ label{
 
   <!-- RELATÓRIOS -->
   <div class="module" id="module-relatorios">
-    <div class="page-header"><div class="page-title">📋 Relatórios</div></div>
+    <div class="page-header"><div class="page-title">📋 Relatórios & Inteligência Financeira</div></div>
+    <!-- PAINEL KPI AVANÇADO -->
+    <div class="kpi-adv-grid" id="relKpiAdv"></div>
+    <!-- FIXAS VS VARIÁVEIS -->
+    <div id="relFixasVariaveis"></div>
+    <!-- RELATÓRIOS EXISTENTES -->
     <div class="grid g3" id="relGrid"></div>
     <div id="relContent" style="margin-top:18px;"></div>
+    <!-- SEÇÕES AVANÇADAS -->
+    <div id="relAdvanced"></div>
   </div>
 
   <!-- CONTA TERCEIROS -->
@@ -1919,17 +2050,19 @@ function renderPagar(){
     <input id="pfDtIni" type="date" onchange="filtrarPagar()">
     <input id="pfDtFim" type="date" onchange="filtrarPagar()">
     <select id="pfStatus" onchange="filtrarPagar()"><option value="">Todos os status</option><option value="PENDENTE">Pendente</option><option value="PAGO">Pago</option></select>
+    <select id="pfDespTipo" onchange="filtrarPagar()"><option value="">Fixa + Variável</option><option value="fixa">📌 Somente Fixas</option><option value="variavel">📊 Somente Variáveis</option></select>
     <button class="btn btn-sm" onclick="limparFiltrosPagar()">✕ Limpar</button>
     <button class="btn btn-sm btn-sky" onclick="filtrarPagarExtra('mes')">Este Mês</button>
     <button class="btn btn-sm btn-danger" onclick="filtrarPagarExtra('vencidas')">Vencidas</button>`;
   filtrarPagar();
 }
 window.filtrarPagarExtra=function(f){ filtrarPagar(f); };
-function limparFiltrosPagar(){ document.getElementById('pfBusca').value=''; document.getElementById('pfStatus').value=''; filtrarPagar(); }
+function limparFiltrosPagar(){ document.getElementById('pfBusca').value=''; document.getElementById('pfStatus').value=''; if(document.getElementById('pfDespTipo')) document.getElementById('pfDespTipo').value=''; filtrarPagar(); }
 
 function filtrarPagar(filtroExtra=''){
   const busca=(document.getElementById('pfBusca')?.value||'').toLowerCase();
   const status=document.getElementById('pfStatus')?.value||'';
+  const despTipoFiltro=document.getElementById('pfDespTipo')?.value||'';
   const dtIni=document.getElementById('pfDtIni')?.value||'';
   const dtFim=document.getElementById('pfDtFim')?.value||'';
   const hojeStr=hoje();
@@ -1937,24 +2070,27 @@ function filtrarPagar(filtroExtra=''){
     if(filtroExtra==='vencidas') return p.status!=='PAGO'&&p.vencimento<hojeStr;
     if(filtroExtra==='mes') return p.vencimento?.startsWith(ano()+'-'+pad(mes()));
     if(status&&p.status!==status) return false;
+    if(despTipoFiltro&&(p.despesaTipo||'fixa')!==despTipoFiltro) return false;
     if(busca&&!p.descricao?.toLowerCase().includes(busca)) return false;
     if(dtIni&&p.vencimento<dtIni) return false;
     if(dtFim&&p.vencimento>dtFim) return false;
     return true;
   }).sort((a,b)=>a.vencimento?.localeCompare(b.vencimento||''));
-  let h=`<table><tr><th>ID</th><th>Vencimento</th><th>Descrição</th><th>Tipo</th><th>Fornecedor</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>`;
-  if(!list.length) h+=`<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento encontrado</td></tr>`;
+  let h=`<table><tr><th>ID</th><th>Vencimento</th><th>Descrição</th><th>Tipo</th><th>F/V</th><th>Fornecedor</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>`;
+  if(!list.length) h+=`<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento encontrado</td></tr>`;
   list.forEach(p=>{
     let stBadge,cls='';
     if(p.status==='PAGO'){stBadge=`<span class="badge bg-emerald">PAGO</span>`;cls='row-paid';}
     else if(p.vencimento<hojeStr){stBadge=`<span class="badge bg-coral">VENCIDA</span>`;cls='row-overdue';}
     else if(p.vencimento===hojeStr){stBadge=`<span class="badge bg-amber">HOJE</span>`;cls='row-today';}
     else stBadge=`<span class="badge bg-gray">PENDENTE</span>`;
+    const dtBadge=(p.despesaTipo||'fixa')==='fixa'?`<span class="badge badge-fixa">📌 Fixa</span>`:`<span class="badge badge-variavel">📊 Var.</span>`;
     h+=`<tr class="${cls}">
       <td style="font-size:9px;color:var(--text3);font-family:monospace;">${(p.id||'').substr(-8)||'—'}</td>
       <td style="white-space:nowrap;">${fmtD(p.vencimento)}</td>
       <td style="font-weight:500;">${esc(p.descricao||'—')}</td>
       <td style="font-size:11px;color:var(--text2);">${esc(p.tipo||'—')}</td>
+      <td>${dtBadge}</td>
       <td style="font-size:11px;color:var(--text2);">${esc(p.fornecedor||'—')}</td>
       <td class="mono c-coral" style="text-align:right;font-weight:600;">${fmtR(p.valor)}</td>
       <td>${stBadge}</td>
@@ -1984,6 +2120,16 @@ function modalLancPagar(){
     <div><label>Documento</label><input id="lpDoc" placeholder="Nº Documento"></div>
   </div>
   <div class="mrow single"><div><label>Observação</label><textarea id="lpObs" rows="2"></textarea></div></div>
+  <div class="mrow">
+    <div>
+      <label>Tipo de Despesa</label>
+      <div class="desp-tipo-radios">
+        <div class="desp-tipo-btn sel-fixa" id="lpTipoFixaBtn" onclick="setDespTipo('fixa')">📌 Fixa</div>
+        <div class="desp-tipo-btn" id="lpTipoVarBtn" onclick="setDespTipo('variavel')">📊 Variável</div>
+      </div>
+      <input type="hidden" id="lpDespTipo" value="fixa">
+    </div>
+  </div>
   <div style="margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;">
       <input type="checkbox" id="lpRep" onchange="toggleRepetir()"> 🔄 Repetir lançamento mensalmente
@@ -2005,6 +2151,7 @@ function modalLancPagar(){
         descricao:(document.getElementById('lpDesc').value||(num>1?`Lançamento ${i+1}/${num}`:''))+(num>1?` (${i+1}/${num})`:''),
         tipo:document.getElementById('lpTipo').value,fornecedor:document.getElementById('lpForn').value,
         documento:document.getElementById('lpDoc').value,obs:document.getElementById('lpObs').value,
+        despesaTipo:document.getElementById('lpDespTipo')?.value||'fixa',
         valor:val,status:'PENDENTE',criadoEm:new Date().toISOString()
       });
     }
@@ -2885,12 +3032,19 @@ function renderConfig(){
   <div>
     <div class="config-section">
       <div class="config-section-title">📋 Tipos de Lançamento — Despesa</div>
-      ${tiposDesp.map(t=>`<div class="cfg-item">
-        <div class="cfg-item-icon">${esc(t.emoji||'📋')}</div>
-        <div class="cfg-item-name">${esc(t.nome)}</div>
-        <button class="btn btn-xs btn-edit" onclick="modalEditarTipo('${t.id}')">✏</button>
-        <button class="btn btn-xs btn-danger" onclick="excluirTipo('${t.nome}')">🗑</button>
-      </div>`).join('')}
+      ${tiposDesp.map(t=>{
+        const subs=getSubtipos(t.nome);
+        return `<div>
+          <div class="cfg-item">
+            <div class="cfg-item-icon">${esc(t.emoji||'📋')}</div>
+            <div class="cfg-item-name">${esc(t.nome)}</div>
+            <button class="btn btn-xs btn-sky" onclick="modalAdicionarSubtipo('${t.id}')" title="Adicionar Subtipo">＋ Subtipo</button>
+            <button class="btn btn-xs btn-edit" onclick="modalEditarTipo('${t.id}')">✏</button>
+            <button class="btn btn-xs btn-danger" onclick="excluirTipo('${t.nome}')">🗑</button>
+          </div>
+          ${subs.length?`<div class="cfg-subtipo-list">${subs.map(s=>`<div class="cfg-subtipo-item"><span style="color:var(--sky);font-size:10px;">├</span><span class="cfg-subtipo-name"><span class="subtipo-tag">${esc(s.nome)}</span></span><button class="btn btn-xs btn-danger" onclick="excluirSubtipo('${s.id}','${t.id}')">✕</button></div>`).join('')}</div>`:''}
+        </div>`;
+      }).join('')}
       <button class="btn btn-sm" style="margin-top:10px;" onclick="modalNovoTipo('DESPESA')">+ Novo Tipo</button>
     </div>
 
@@ -3188,6 +3342,316 @@ function loadDemoData(){
   DATA.movTerceiros.push({id:genId('TMV'),terceiroId:t1,tipo:'SAIDA',valor:200,data:ma+'-15',descricao:'Devolução parcial',classificacao:'Devolução',criadoEm:new Date().toISOString()});
   save(true); navigateTo('dashboard'); toast('✅ Dados de exemplo carregados');
 }
+
+// ================================================================
+// DESPESA FIXA / VARIÁVEL — toggle
+// ================================================================
+window.setDespTipo = function(tipo){
+  document.getElementById('lpDespTipo').value = tipo;
+  document.getElementById('lpTipoFixaBtn').className = 'desp-tipo-btn' + (tipo==='fixa'?' sel-fixa':'');
+  document.getElementById('lpTipoVarBtn').className = 'desp-tipo-btn' + (tipo==='variavel'?' sel-variavel':'');
+};
+
+// ================================================================
+// SUBTIPOS (MELHORIA 4)
+// ================================================================
+function getSubtipos(tipoNome){
+  if(!DATA.subTipos) DATA.subTipos=[];
+  return DATA.subTipos.filter(s=>s.tipoNome===tipoNome);
+}
+function modalAdicionarSubtipo(tipoId){
+  const t=DATA.tipos.find(x=>x.id===tipoId); if(!t) return;
+  const subs=getSubtipos(t.nome);
+  const h=`
+  <div class="info-block">Subtipos de <strong>${esc(t.emoji)} ${esc(t.nome)}</strong>:
+    ${subs.length?'<ul style="margin-top:6px;padding-left:16px;">'+subs.map(s=>`<li style="font-size:11px;color:var(--text2);margin-bottom:4px;">${esc(s.nome)} <button class="btn btn-xs btn-danger" onclick="excluirSubtipo('${s.id}','${tipoId}');this.closest('.modal-overlay').remove();setTimeout(()=>modalAdicionarSubtipo('${tipoId}'),50);">✕</button></li>`).join('')+'</ul>':'<span style="color:var(--text3);font-size:11px;"> Nenhum</span>'}
+  </div>
+  <div class="mrow">
+    <div><label>Nome do Subtipo</label><input id="stNome" placeholder="Ex: Nubank, Material Escolar..."></div>
+  </div>`;
+  openModal(`Subtipos — ${t.emoji} ${t.nome}`,'🗂️',h,()=>{
+    const nome=document.getElementById('stNome').value.trim();
+    if(!nome) return toast('⚠️ Nome obrigatório','var(--amber)');
+    if(!DATA.subTipos) DATA.subTipos=[];
+    DATA.subTipos.push({id:genId('ST'),tipoNome:t.nome,tipoId,nome,criadoEm:new Date().toISOString()});
+    save(true); renderConfig(); toast('✅ Subtipo adicionado'); closeAllModals();
+  },'Adicionar');
+}
+function excluirSubtipo(id,tipoId){
+  DATA.subTipos=DATA.subTipos.filter(s=>s.id!==id);
+  save(true); renderConfig(); toast('🗑 Subtipo excluído');
+}
+// Subtipo select dinâmico — adiciona campo subtipo quando tipo é selecionado num select com id lpTipo/movTipo
+function setupSubtipoSelect(tipoSelectId, subtipoContainerId){
+  const sel=document.getElementById(tipoSelectId);
+  if(!sel) return;
+  sel.addEventListener('change',function(){
+    const subs=getSubtipos(this.value);
+    const c=document.getElementById(subtipoContainerId);
+    if(!c) return;
+    if(!subs.length){ c.style.display='none'; return; }
+    c.style.display='block';
+    c.querySelector('select').innerHTML=subs.map(s=>`<option value="${esc(s.nome)}">${esc(s.nome)}</option>`).join('');
+  });
+  // Trigger initial
+  sel.dispatchEvent(new Event('change'));
+}
+
+// ================================================================
+// RELATÓRIOS AVANÇADOS (MELHORIA 6)
+// ================================================================
+function renderRelatorios(){
+  // Painel KPI Avançado (6.4)
+  const a=ano(); const m=mes(); const ma=a+'-'+pad(m);
+  const totSaldo=DATA.contas.reduce((s,c)=>s+saldoConta(c.id),0);
+  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const taxaPoupanca=recMes>0?(((recMes-despMes)/recMes)*100):0;
+  // Saldo médio últimos 6 meses
+  let saldoAcum=0; let mCount=0;
+  for(let i=5;i>=0;i--){
+    const d2=new Date(a,m-1-i,1);
+    const mi2=d2.getMonth()+1; const ai2=d2.getFullYear();
+    const mStr2=ai2+'-'+pad(mi2);
+    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    saldoAcum+=(e-s); mCount++;
+  }
+  const saldoMedio=mCount>0?saldoAcum/mCount:0;
+  // Projeção 12 meses realista
+  const projReal=totSaldo+(saldoMedio*12);
+
+  document.getElementById('relKpiAdv').innerHTML=`
+    <div class="kpi-adv-card"><div class="kpi-adv-label">💰 Patrimônio Atual</div><div class="kpi-adv-value ${totSaldo>=0?'c-emerald':'c-coral'}">${fmtR(totSaldo)}</div></div>
+    <div class="kpi-adv-card"><div class="kpi-adv-label">📊 Taxa de Poupança</div><div class="kpi-adv-value ${taxaPoupanca>=0?'c-emerald':'c-coral'}">${taxaPoupanca.toFixed(1)}%</div></div>
+    <div class="kpi-adv-card"><div class="kpi-adv-label">⚖️ Saldo Médio (6m)</div><div class="kpi-adv-value ${saldoMedio>=0?'c-emerald':'c-coral'}">${fmtR(saldoMedio)}</div></div>
+    <div class="kpi-adv-card"><div class="kpi-adv-label">🔮 Projeção 12m</div><div class="kpi-adv-value ${projReal>=0?'c-emerald':'c-coral'}">${fmtR(projReal)}</div></div>`;
+
+  // Fixas vs Variáveis (6 — Dashboard)
+  const fixas=DATA.pagar.filter(p=>p.status!=='PAGO'&&(p.despesaTipo||'fixa')==='fixa');
+  const variaveis=DATA.pagar.filter(p=>p.status!=='PAGO'&&(p.despesaTipo||'fixa')==='variavel');
+  const totFixas=fixas.reduce((s,p)=>s+p.valor,0);
+  const totVariaveis=variaveis.reduce((s,p)=>s+p.valor,0);
+  const totFV=totFixas+totVariaveis;
+  const pctFixas=totFV>0?((totFixas/totFV)*100):0;
+  const pctVariaveis=totFV>0?((totVariaveis/totFV)*100):0;
+  document.getElementById('relFixasVariaveis').innerHTML=`
+    <div class="fv-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#BCC5D8;font-weight:700;font-family:'Orbitron',sans-serif;">📌 Despesas Fixas vs 📊 Variáveis</div>
+        <div style="font-size:11px;color:var(--text2);">Total: <strong style="color:var(--text);">${fmtR(totFV)}</strong></div>
+      </div>
+      <div class="fv-bar-wrap">
+        <div class="fv-bar-fixa" style="width:${pctFixas.toFixed(1)}%;"></div>
+        <div class="fv-bar-variavel" style="width:${pctVariaveis.toFixed(1)}%;"></div>
+      </div>
+      <div class="fv-legend">
+        <div class="fv-leg-item"><div class="fv-dot" style="background:var(--violet);"></div><span style="color:var(--text2);">Fixas: <strong style="color:var(--violet);">${fmtR(totFixas)}</strong> (${pctFixas.toFixed(1)}%)</span></div>
+        <div class="fv-leg-item"><div class="fv-dot" style="background:var(--amber);"></div><span style="color:var(--text2);">Variáveis: <strong style="color:var(--amber);">${fmtR(totVariaveis)}</strong> (${pctVariaveis.toFixed(1)}%)</span></div>
+      </div>
+    </div>`;
+
+  // Relatórios existentes (botões)
+  document.getElementById('relGrid').innerHTML=`
+    <div class="card" style="cursor:pointer;" onclick="relDespTipo()"><div class="card-label">Despesas por Tipo</div><div class="card-val c-coral" style="font-size:22px;">📊</div><div class="card-sub">Mês atual — por categoria</div></div>
+    <div class="card" style="cursor:pointer;" onclick="relFluxo()"><div class="card-label">Fluxo de Caixa</div><div class="card-val c-emerald" style="font-size:22px;">📈</div><div class="card-sub">Entradas e saídas no período</div></div>
+    <div class="card" style="cursor:pointer;" onclick="relPatrimonio()"><div class="card-label">Evolução do Patrimônio</div><div class="card-val c-violet" style="font-size:22px;">🏦</div><div class="card-sub">Crescimento ao longo do tempo</div></div>`;
+
+  renderAdvancedReports();
+}
+
+function renderAdvancedReports(){
+  const a=ano(); const m=mes();
+  const totSaldo=DATA.contas.reduce((s,c)=>s+saldoConta(c.id),0);
+  // 6 meses de dados
+  const labels6=[], ents6=[], sais6=[], saldos6=[];
+  let saldoAcumArr=[];
+  for(let i=5;i>=0;i--){
+    const d2=new Date(a,m-1-i,1);
+    const mi2=d2.getMonth()+1; const ai2=d2.getFullYear();
+    const mStr2=ai2+'-'+pad(mi2);
+    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    labels6.push(nomeMes(mi2)+'/'+String(ai2).slice(2));
+    ents6.push(e); sais6.push(s); saldos6.push(e-s);
+  }
+
+  // Projeções 3 cenários — media dos últimos meses
+  const avgRec=ents6.reduce((s,v)=>s+v,0)/Math.max(ents6.filter(v=>v>0).length,1);
+  const avgDesp=sais6.reduce((s,v)=>s+v,0)/Math.max(sais6.filter(v=>v>0).length,1);
+  const proj12Otimista=totSaldo+((avgRec*1.2-avgDesp*0.8)*12);
+  const proj12Realista=totSaldo+((avgRec-avgDesp)*12);
+  const proj12Pessimista=totSaldo+((avgRec*0.85-avgDesp*1.15)*12);
+  const poupMensal=(avgRec-avgDesp);
+
+  document.getElementById('relAdvanced').innerHTML=`
+    <!-- EVOLUÇÃO DO PATRIMÔNIO -->
+    <div class="adv-report-card">
+      <div class="adv-report-title">◈ 6.1 — Evolução do Saldo Mensal</div>
+      <canvas id="chartPatrimonio" height="120"></canvas>
+    </div>
+    <!-- PROJEÇÃO DE FLUXO -->
+    <div class="adv-report-card">
+      <div class="adv-report-title">◈ 6.2 — Projeção de Fluxo de Caixa (Cash Flow Forecast)</div>
+      <canvas id="chartCashFlow" height="120"></canvas>
+    </div>
+    <!-- CENÁRIOS -->
+    <div class="adv-report-card">
+      <div class="adv-report-title">◈ 6.4 — Projeção 12 Meses — 3 Cenários</div>
+      <div class="scenario-grid">
+        <div class="scenario-card otimista">
+          <div class="scenario-label" style="color:var(--emerald);">🟢 Otimista</div>
+          <div class="scenario-value c-emerald">${fmtR(proj12Otimista)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px;">+20% receita / -20% despesas</div>
+        </div>
+        <div class="scenario-card realista">
+          <div class="scenario-label" style="color:var(--amber);">🟡 Realista</div>
+          <div class="scenario-value c-amber">${fmtR(proj12Realista)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px;">Tendência atual mantida</div>
+        </div>
+        <div class="scenario-card pessimista">
+          <div class="scenario-label" style="color:var(--coral);">🔴 Pessimista</div>
+          <div class="scenario-value c-coral">${fmtR(proj12Pessimista)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px;">-15% receita / +15% despesas</div>
+        </div>
+      </div>
+    </div>
+    <!-- WHAT-IF (6.3) -->
+    <div class="adv-report-card">
+      <div class="adv-report-title">◈ 6.3 — Simulação "E Se...?" (What-If)</div>
+      <div class="whatif-section">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap;">
+          <div>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#BCC5D8;font-weight:700;">💰 Economizar por mês (R$)</label>
+            <input class="whatif-slider" type="range" id="wiEcon" min="0" max="5000" step="100" value="500" oninput="updateWhatIf()">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);"><span>R$ 0</span><span id="wiEconVal" style="color:var(--orange);font-weight:700;">R$ 500</span><span>R$ 5k</span></div>
+          </div>
+          <div>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#BCC5D8;font-weight:700;">📈 Variação de Renda (%)</label>
+            <input class="whatif-slider" type="range" id="wiRenda" min="-50" max="100" step="5" value="0" oninput="updateWhatIf()">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);"><span>-50%</span><span id="wiRendaVal" style="color:var(--orange);font-weight:700;">0%</span><span>+100%</span></div>
+          </div>
+        </div>
+        <div id="wiResult" style="margin-top:16px;padding:14px;background:var(--surface3);border-radius:10px;"></div>
+      </div>
+    </div>`;
+
+  // Render charts
+  setTimeout(()=>{
+    // Chart Patrimônio
+    const ctx1=document.getElementById('chartPatrimonio');
+    if(ctx1&&!charts.chartPatrimonio){
+      // Calcular saldo acumulado crescente
+      let running=totSaldo;
+      const patrimLabels=[...labels6];
+      const patrimData=saldos6.map((v,i)=>{
+        if(i===0) running=totSaldo; else running+=saldos6[i-1];
+        return running+v;
+      });
+      charts.chartPatrimonio=new Chart(ctx1,{
+        type:'line',
+        data:{labels:patrimLabels,datasets:[{
+          label:'Saldo Acumulado',data:patrimData,
+          borderColor:'var(--emerald)',backgroundColor:'rgba(0,229,160,.08)',
+          borderWidth:2.5,fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'var(--emerald)'
+        }]},
+        options:{responsive:true,plugins:{legend:{labels:{color:'#BCC5D8',font:{size:11}}}},
+          scales:{x:{ticks:{color:'#8A93B0',font:{size:10}},grid:{color:'rgba(255,255,255,.03)'}},
+                  y:{ticks:{color:'#8A93B0',font:{size:10},callback:v=>'R$ '+v.toLocaleString('pt-BR')},grid:{color:'rgba(255,255,255,.04)'}}}}
+      });
+    }
+    // Chart Cash Flow Forecast — próximos 6 meses
+    const ctx2=document.getElementById('chartCashFlow');
+    if(ctx2&&!charts.chartCashFlow){
+      const avgRec2=ents6.reduce((s,v)=>s+v,0)/Math.max(ents6.filter(v=>v>0).length,1);
+      const avgDesp2=sais6.reduce((s,v)=>s+v,0)/Math.max(sais6.filter(v=>v>0).length,1);
+      const labFut=[]; const entFut=[]; const saiFut=[]; const saldFut=[];
+      for(let i=1;i<=6;i++){
+        const d2=new Date(ano(),mes()-1+i,1);
+        labFut.push(nomeMes(d2.getMonth()+1)+'/'+String(d2.getFullYear()).slice(2));
+        entFut.push(Math.round(avgRec2)); saiFut.push(Math.round(avgDesp2));
+        saldFut.push(Math.round(avgRec2-avgDesp2));
+      }
+      charts.chartCashFlow=new Chart(ctx2,{
+        type:'bar',
+        data:{labels:labFut,datasets:[
+          {label:'Entradas Prev.',data:entFut,backgroundColor:'rgba(0,229,160,.5)',borderColor:'var(--emerald)',borderWidth:1.5,borderRadius:5},
+          {label:'Saídas Prev.',data:saiFut,backgroundColor:'rgba(255,77,106,.45)',borderColor:'var(--coral)',borderWidth:1.5,borderRadius:5},
+          {label:'Saldo Proj.',data:saldFut,type:'line',borderColor:'var(--orange)',backgroundColor:'rgba(255,122,0,.1)',borderWidth:2,fill:false,tension:0.3,pointRadius:4}
+        ]},
+        options:{responsive:true,plugins:{legend:{labels:{color:'#BCC5D8',font:{size:11}}}},
+          scales:{x:{ticks:{color:'#8A93B0',font:{size:10}},grid:{color:'rgba(255,255,255,.03)'}},
+                  y:{ticks:{color:'#8A93B0',font:{size:10},callback:v=>'R$ '+v.toLocaleString('pt-BR')},grid:{color:'rgba(255,255,255,.04)'}}}}
+      });
+    }
+    updateWhatIf();
+  },100);
+}
+
+window.updateWhatIf = function(){
+  const econ=parseFloat(document.getElementById('wiEcon')?.value)||0;
+  const renda=parseFloat(document.getElementById('wiRenda')?.value)||0;
+  document.getElementById('wiEconVal').textContent='R$ '+econ.toLocaleString('pt-BR');
+  document.getElementById('wiRendaVal').textContent=(renda>=0?'+':'')+renda+'%';
+  const totSaldo=DATA.contas.reduce((s,c)=>s+saldoConta(c.id),0);
+  const m=mes(); const a=ano();
+  const ma=a+'-'+pad(m);
+  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const novaRec=recMes*(1+renda/100);
+  const mensalAjustado=(novaRec-despMes)+econ;
+  const proj12=totSaldo+mensalAjustado*12;
+  const proj24=totSaldo+mensalAjustado*24;
+  const meta=15000; // exemplo — reserva emergência
+  const mesesMeta=mensalAjustado>0?Math.ceil(Math.max(0,meta-totSaldo)/mensalAjustado):Infinity;
+  const cor=proj12>=totSaldo?'var(--emerald)':'var(--coral)';
+  const r=document.getElementById('wiResult');
+  if(r) r.innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div style="text-align:center;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:6px;">Saldo Mensal Simulado</div><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:${mensalAjustado>=0?'var(--emerald)':'var(--coral)'};">${fmtR(mensalAjustado)}</div></div>
+      <div style="text-align:center;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:6px;">Patrimônio em 12 meses</div><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:${cor};">${fmtR(proj12)}</div></div>
+      <div style="text-align:center;"><div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:6px;">Patrimônio em 24 meses</div><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:${cor};">${fmtR(proj24)}</div></div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text2);text-align:center;">
+      ${mesesMeta===Infinity?'⚠️ Com essas condições não é possível atingir a meta de reserva de emergência.':mesesMeta<=0?'✅ Meta de reserva já atingida!':'🎯 Para atingir reserva de R$ '+fmtR(meta)+': aproximadamente <strong style="color:var(--orange);">'+mesesMeta+' meses</strong>'}
+    </div>`;
+};
+
+// Render relatório despesa por tipo
+function relDespTipo(){
+  const m2=mes(); const a2=ano(); const ma=a2+'-'+pad(m2);
+  const por={};
+  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).forEach(x=>{
+    por[x.tipo||'Outros']=(por[x.tipo||'Outros']||0)+x.valor;
+  });
+  const total=Object.values(por).reduce((s,v)=>s+v,0);
+  let h=`<div class="adv-report-card"><div class="adv-report-title">◈ Despesas por Tipo — ${nomeMesFull(m2)}/${a2}</div>`;
+  if(!total){ h+='<div style="color:var(--text3);padding:16px;">Nenhuma despesa registrada neste mês</div>'; }
+  else {
+    h+=`<canvas id="chartRelDesp" height="160"></canvas><div style="margin-top:14px;">`;
+    Object.entries(por).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
+      const pct=total>0?v/total*100:0;
+      h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="flex:0 0 140px;font-size:12px;color:var(--text);">${esc(k)}</span><div style="flex:1;height:6px;background:var(--surface2);border-radius:4px;overflow:hidden;"><div style="width:${pct.toFixed(0)}%;height:100%;background:var(--coral);border-radius:4px;"></div></div><span class="mono" style="flex:0 0 80px;text-align:right;font-size:11px;color:var(--coral);">${fmtR(v)}</span><span style="flex:0 0 36px;text-align:right;font-size:10px;color:var(--text3);">${pct.toFixed(0)}%</span></div>`;
+    });
+    h+='</div>';
+  }
+  h+='</div>';
+  document.getElementById('relContent').innerHTML=h;
+  if(total){
+    setTimeout(()=>{
+      const ctx=document.getElementById('chartRelDesp');
+      if(ctx&&!charts.chartRelDesp){
+        const labels=Object.keys(por); const vals=Object.values(por);
+        charts.chartRelDesp=new Chart(ctx,{
+          type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:['rgba(255,77,106,.7)','rgba(255,122,0,.7)','rgba(155,109,255,.7)','rgba(56,205,255,.7)','rgba(255,184,48,.7)','rgba(0,229,160,.7)','rgba(255,107,157,.7)'],borderWidth:0,hoverOffset:6}]},
+          options:{responsive:true,plugins:{legend:{labels:{color:'#BCC5D8',font:{size:10}}}}}
+        });
+      }
+    },100);
+  }
+}
+function relFluxo(){ navigateTo('relatorios'); }
+function relPatrimonio(){ navigateTo('relatorios'); }
 
 // ================================================================
 // INIT
