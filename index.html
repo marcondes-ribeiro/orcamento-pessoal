@@ -1050,6 +1050,36 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
 /* ===== DASHBOARD EXTRAS ===== */
 .chart-card canvas { max-height: 200px; }
 
+/* === NOVO: Google Drive === */
+.drive-status-indicator {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 20px; font-size: 10px;
+  font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  border: 1px solid var(--border2); background: var(--surface2);
+  cursor: pointer; transition: all .2s var(--ease);
+}
+.drive-status-indicator:hover { border-color: var(--border3); background: var(--surface3); }
+.drive-status-indicator.connected { border-color: rgba(0,229,160,.3); color: var(--emerald); }
+.drive-status-indicator.connected:hover { background: rgba(0,229,160,.05); }
+.drive-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.drive-status-indicator.connected .drive-status-dot { background: var(--emerald); box-shadow: 0 0 6px rgba(0,229,160,.5); }
+
+/* === NOVO: Previsões === */
+.prev-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;
+}
+.prev-tipo-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--surface2);
+  border-radius: 9px; border: 1px solid var(--border);
+  transition: border-color .2s;
+}
+.prev-tipo-row:hover { border-color: var(--border2); }
+.prev-tipo-label { flex: 1; font-size: 12px; font-weight: 600; }
+.prev-tipo-input { width: 120px !important; text-align: right; }
+.prev-overbudget td { background: rgba(255,77,106,.06) !important; }
+.prev-overbudget .prev-diff { color: var(--coral) !important; font-weight: 700; }
+
 /* Annual table striping */
 #dashResumoAnual table tr:hover td {
   background: rgba(255,122,0,.025);
@@ -1095,6 +1125,8 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
     <div class="nav-item" data-mod="cartao"><div class="nav-icon">💳</div>Cartão</div>
     <div class="nav-section">Planejamento</div>
     <div class="nav-item" data-mod="objetivos"><div class="nav-icon">🎯</div>Objetivos</div>
+    <!-- === NOVO: Previsões === -->
+    <div class="nav-item" data-mod="previsoes"><div class="nav-icon">📅</div>Previsões</div>
     <div class="nav-item" data-mod="relatorios"><div class="nav-icon">📋</div>Relatórios</div>
     <div class="nav-section">Módulos</div>
     <div class="nav-item" data-mod="terceiros"><div class="nav-icon">👥</div>Conta Terceiros</div>
@@ -1116,6 +1148,11 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
   <button class="hbtn" onclick="importBackup()">⬆ <span>Carregar</span></button>
   <button class="hbtn" onclick="exportCSV()">📊 <span>CSV</span></button>
   <button class="hbtn" onclick="window.print()">🖨</button>
+  <!-- === NOVO: Google Drive === -->
+  <div id="driveStatusIndicator" class="drive-status-indicator" onclick="driveStatusClick()" title="Google Drive">
+    <div class="drive-status-dot"></div>
+    <span id="driveStatusText">Drive</span>
+  </div>
   <div class="bell-btn" id="bellBtn" onclick="toggleNotif()">
     🔔<span class="bell-badge" id="bellBadge" style="display:none">0</span>
   </div>
@@ -1258,6 +1295,17 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
     <div class="grid g3" id="objGrid"></div>
   </div>
 
+  <!-- === NOVO: Previsões === -->
+  <div class="module" id="module-previsoes">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📅 Previsões Orçamentárias</div>
+        <div class="page-sub">Defina metas mensais de gastos por categoria</div>
+      </div>
+    </div>
+    <div id="previsoesContent"></div>
+  </div>
+
   <!-- RELATÓRIOS -->
   <div class="module" id="module-relatorios">
     <div class="page-header"><div class="page-title">📋 Relatórios & Inteligência Financeira</div></div>
@@ -1308,18 +1356,21 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
   <div class="drive-modal">
     <button class="drive-modal-close" onclick="closeDriveModal()">✕</button>
     <div class="drive-modal-icon">☁️</div>
-    <div class="drive-modal-title">Sincronizar com Google Drive</div>
+    <div class="drive-modal-title">Sincronização com Google Drive</div>
     <div class="drive-modal-desc">
-      Salve e carregue seus dados financeiros automaticamente na nuvem.<br>
-      Acesse de qualquer dispositivo, a qualquer momento.
+      Conecte sua conta Google para salvar e restaurar seus dados automaticamente na nuvem.
     </div>
     <div class="drive-modal-actions">
       <button class="btn btn-primary" style="padding:11px 26px;font-size:13px;" onclick="connectGDriveModal()">
-        🔗 Conectar
+        🔗 Conectar com Google Drive
       </button>
       <button class="btn" style="padding:11px 22px;font-size:13px;" onclick="closeDriveModal()">
         Agora não
       </button>
+    </div>
+    <div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <input type="checkbox" id="driveSkipCheck" style="width:auto;cursor:pointer;">
+      <label for="driveSkipCheck" style="font-size:11px;color:var(--text2);text-transform:none;letter-spacing:0;cursor:pointer;margin:0;">Não mostrar novamente</label>
     </div>
   </div>
 </div>
@@ -1344,10 +1395,19 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
 // ================================================================
 // GOOGLE DRIVE MODAL
 // ================================================================
+
+/* === NOVO: Google Drive === */
+const GOOGLE_CLIENT_ID = 'SEU_CLIENT_ID_AQUI';
+let _driveAccessToken = null; // token em memória apenas — não persiste
+
 function openDriveModal(){
+  // Respeita nexus_drive_skip no localStorage
+  if(localStorage.getItem('nexus_drive_skip')==='1') return;
   document.getElementById('driveModalOverlay').style.display='flex';
 }
 function closeDriveModal(){
+  const skip = document.getElementById('driveSkipCheck');
+  if(skip && skip.checked) localStorage.setItem('nexus_drive_skip','1');
   document.getElementById('driveModalOverlay').style.display='none';
   DATA.config.driveDismissed=true;
   save(true);
@@ -1355,6 +1415,29 @@ function closeDriveModal(){
 function connectGDriveModal(){
   closeDriveModal();
   connectGDrive();
+}
+
+/* === NOVO: Google Drive — status indicator === */
+function updateDriveStatus(){
+  const ind = document.getElementById('driveStatusIndicator');
+  const txt = document.getElementById('driveStatusText');
+  if(!ind||!txt) return;
+  if(_driveAccessToken){
+    ind.classList.add('connected');
+    txt.textContent='Conectado';
+  } else {
+    ind.classList.remove('connected');
+    txt.textContent='Drive';
+  }
+}
+
+function driveStatusClick(){
+  if(_driveAccessToken){
+    // Mostra opções de salvar/restaurar via toast
+    showToast('☁️ Drive conectado — use os botões em Configurações','var(--emerald)',3500);
+  } else {
+    openDriveModal();
+  }
 }
 
 
@@ -1368,7 +1451,9 @@ let DATA = {
   categoriasCartao:[], metasGasto:[],
   config:{nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false},
   historicoFatura:[], auditoria:[],
-  terceiros:[], movTerceiros:[]
+  terceiros:[], movTerceiros:[],
+  /* === NOVO: Previsões === */
+  previsoes:[]
 };
 let currentMod = 'dashboard';
 let contaSel = null;
@@ -1399,7 +1484,9 @@ function init(){
       sidebar.classList.remove('open');
     }
   });
-  if(!DATA.config.driveDismissed) setTimeout(()=>{ openDriveModal(); }, 1200);
+  if(!DATA.config.driveDismissed && localStorage.getItem('nexus_drive_skip')!=='1') setTimeout(()=>{ openDriveModal(); }, 1200);
+  /* === NOVO: Google Drive — check nexus_drive_skip === */
+  updateDriveStatus();
 }
 
 function loadData(){
@@ -1411,10 +1498,14 @@ function loadData(){
     contas:[],movimentacoes:[],pagar:[],receber:[],gastosCartao:[],
     objetivos:[],tipos:[],subTipos:[],categoriasCartao:[],metasGasto:[],
     config:{nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false},
-    historicoFatura:[],auditoria:[],terceiros:[],movTerceiros:[]
+    historicoFatura:[],auditoria:[],terceiros:[],movTerceiros:[],
+    /* === NOVO: Previsões — migração === */
+    previsoes:[]
   };
   // Migração v4.1: garantir subTipos sempre como array
   if(!Array.isArray(DATA.subTipos)) DATA.subTipos=[];
+  /* === NOVO: Previsões — migração === */
+  if(!Array.isArray(DATA.previsoes)) DATA.previsoes=[];
   Object.keys(d).forEach(k=>{ if(DATA[k]===undefined||DATA[k]===null) DATA[k]=d[k]; });
   if(!DATA.config) DATA.config=d.config;
   ['nome','rendaMensal','diaFechamento','driveDismissed'].forEach(k=>{
@@ -1448,6 +1539,8 @@ function esc(s){ return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').
 const titleMap={
   dashboard:'DASHBOARD',contas:'Contas e Movimentações',pagar:'Contas a Pagar',
   receber:'Contas a Receber',cartao:'Gastos com Cartão',objetivos:'Objetivos e Metas',
+  /* === NOVO: Previsões === */
+  previsoes:'Previsões Orçamentárias',
   relatorios:'Relatórios & Análises',terceiros:'Conta de Terceiros',config:'Configurações do Sistema'
 };
 function setupNav(){
@@ -1466,6 +1559,8 @@ function navigateTo(mod){
   const renders={
     dashboard:renderDashboard, contas:renderContas, pagar:renderPagar,
     receber:renderReceber, cartao:renderCartao, objetivos:renderObjetivos,
+    /* === NOVO: Previsões === */
+    previsoes:renderPrevisoes,
     relatorios:renderRelatorios, terceiros:renderTerceiros, config:renderConfig
   };
   if(renders[mod]) renders[mod]();
@@ -1536,24 +1631,25 @@ function card(label, bgClass, badge, val, valClass, sub, extra=''){
 // ================================================================
 // DRIVE INTEGRATION
 // ================================================================
+/* === NOVO: Google Drive === */
 function connectGDrive(){
-  // OAuth flow — preparado para GitHub Pages + Google OAuth
-  const CLIENT_ID = 'SEU_GOOGLE_CLIENT_ID'; // Configurar em Configurações
-  if(CLIENT_ID==='SEU_GOOGLE_CLIENT_ID'){
-    showToast('⚠️ Configure o Client ID do Google em Configurações > Drive','var(--amber)',4000);
-    dismissDriveBanner();
+  if(GOOGLE_CLIENT_ID==='SEU_CLIENT_ID_AQUI'){
+    showToast('⚠️ Configure o GOOGLE_CLIENT_ID no código-fonte antes de conectar','var(--amber)',5000);
     return;
   }
   const scope = 'https://www.googleapis.com/auth/drive.file';
   const redirectUri = window.location.origin + window.location.pathname;
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent`;
   window.open(url,'_self');
 }
+
 function dismissDriveBanner(){
   DATA.config.driveDismissed=true;
-  document.getElementById('driveBanner').style.display='none';
+  const b=document.getElementById('driveBanner');
+  if(b) b.style.display='none';
   save(true);
 }
+
 // Check for OAuth token in URL hash (after redirect)
 (function checkOAuthReturn(){
   const hash = window.location.hash;
@@ -1561,28 +1657,81 @@ function dismissDriveBanner(){
     const params = new URLSearchParams(hash.slice(1));
     const token = params.get('access_token');
     if(token){
-      DATA.config.driveToken=token;
+      /* === NOVO: Google Drive — token em memória === */
+      _driveAccessToken = token;
       DATA.config.driveConnected=true;
       save(true);
       showToast('✅ Google Drive conectado com sucesso!','var(--emerald)',4000);
       history.replaceState(null,null,' ');
+      updateDriveStatus();
     }
   }
 })();
+
+/* === NOVO: Google Drive — Salvar no Drive === */
 async function saveToGDrive(){
-  if(!DATA.config.driveToken) return showToast('⚠️ Drive não conectado','var(--amber)');
-  const json=JSON.stringify(DATA,null,2);
-  const blob=new Blob([json],{type:'application/json'});
-  const formData=new FormData();
-  formData.append('metadata',new Blob([JSON.stringify({name:'flowmind_v4_data.json',mimeType:'application/json'})],{type:'application/json'}));
-  formData.append('file',blob);
+  if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
+  showToast('☁️ Salvando no Google Drive...','var(--orange)',2000);
   try{
-    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
-      method:'POST',headers:{'Authorization':'Bearer '+DATA.config.driveToken},body:formData
+    const json = JSON.stringify(DATA, null, 2);
+    // Verifica se arquivo já existe
+    const searchR = await fetch(`https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)`,{
+      headers:{'Authorization':'Bearer '+_driveAccessToken}
     });
-    if(r.ok) showToast('☁️ Dados salvos no Google Drive','var(--orange)',3000);
-    else showToast('❌ Erro ao salvar no Drive (token expirado?)','var(--coral)');
-  }catch(e){ showToast('❌ Erro de conexão com o Drive','var(--coral)'); }
+    const searchData = await searchR.json();
+    const existingId = searchData.files && searchData.files.length>0 ? searchData.files[0].id : null;
+
+    let r;
+    if(existingId){
+      // Atualiza arquivo existente
+      r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`,{
+        method:'PATCH',
+        headers:{'Authorization':'Bearer '+_driveAccessToken,'Content-Type':'application/json'},
+        body: json
+      });
+    } else {
+      // Cria novo arquivo
+      const formData = new FormData();
+      formData.append('metadata', new Blob([JSON.stringify({name:'nexus-one-backup.json',mimeType:'application/json'})],{type:'application/json'}));
+      formData.append('file', new Blob([json],{type:'application/json'}));
+      r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+_driveAccessToken},
+        body: formData
+      });
+    }
+    if(r.ok) showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500);
+    else showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)');
+  } catch(e){ showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)'); }
+}
+
+/* === NOVO: Google Drive — Restaurar do Drive === */
+async function restoreFromGDrive(){
+  if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
+  showToast('☁️ Buscando backup no Google Drive...','var(--orange)',2000);
+  try{
+    const searchR = await fetch(`https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)`,{
+      headers:{'Authorization':'Bearer '+_driveAccessToken}
+    });
+    const searchData = await searchR.json();
+    if(!searchData.files || searchData.files.length===0){
+      return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
+    }
+    const fileId = searchData.files[0].id;
+    const fileR = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{
+      headers:{'Authorization':'Bearer '+_driveAccessToken}
+    });
+    const text = await fileR.text();
+    let parsed;
+    try{ parsed = JSON.parse(text); } catch(e){ return showToast('❌ Arquivo de backup inválido.','var(--coral)'); }
+    if(!confirm('Restaurar backup do Drive? Os dados atuais serão substituídos.')) return;
+    DATA = parsed;
+    if(!Array.isArray(DATA.previsoes)) DATA.previsoes=[];
+    save(true);
+    if(typeof loadData==='function') loadData();
+    navigateTo('dashboard');
+    showToast('✅ Dados restaurados do Google Drive!','var(--emerald)',4000);
+  } catch(e){ showToast('❌ Erro ao restaurar do Drive. Tente novamente.','var(--coral)'); }
 }
 
 // ================================================================
@@ -1770,6 +1919,36 @@ function renderDashboard(){
   document.getElementById('dashResumoAnual').innerHTML=hAnual;
 
   // ---- GRÁFICOS ----
+  // === NOVO: Previsões — Card Dashboard ===
+  const prevsAtual = DATA.previsoes.filter(p=>p.mesAno===ma);
+  const prevTotalMes = prevsAtual.reduce((s,p)=>s+p.valorPrevisto,0);
+  const diffPrevReal = prevTotalMes - despMes;
+  if(prevsAtual.length>0){
+    const dashPrevCard = document.createElement('div');
+    dashPrevCard.className='card';
+    dashPrevCard.style.marginBottom='18px';
+    dashPrevCard.innerHTML=`
+      <span class="card-badge bg-amber">PREVISÃO</span>
+      <div class="card-label">📅 Previsão vs Realizado — ${nomeMes(m)}/${a}</div>
+      <div class="card-val ${diffPrevReal>=0?'c-emerald':'c-coral'}">${diffPrevReal>=0?'+':''}${fmtR(diffPrevReal)}</div>
+      <div class="card-sub">Diferença: Previsto − Realizado</div>
+      <div class="card-detail">
+        <div class="card-detail-row"><span>🎯 Previsão Total do mês</span><strong class="c-amber">${fmtR(prevTotalMes)}</strong></div>
+        <div class="card-detail-row"><span>💸 Gasto Realizado</span><strong class="c-coral">${fmtR(despMes)}</strong></div>
+      </div>`;
+    const chartsSection = document.querySelector('#module-dashboard .grid.g3:last-of-type');
+    const parent = document.getElementById('dashResumoAnual').parentElement;
+    if(parent){
+      const existingPrevCard = document.getElementById('dashPrevCard');
+      if(existingPrevCard) existingPrevCard.remove();
+      dashPrevCard.id='dashPrevCard';
+      document.getElementById('dashResumoAnual').insertAdjacentElement('afterend',dashPrevCard);
+    }
+  } else {
+    const existing=document.getElementById('dashPrevCard');
+    if(existing) existing.remove();
+  }
+
   // Build 6-month data
   const labels6=[],ents6=[],sais6=[],saldos6=[];
   for(let i=5;i>=0;i--){
@@ -3283,13 +3462,15 @@ function renderConfig(){
     <div class="config-section">
       <div class="config-section-title">☁️ Google Drive</div>
       <div class="info-block" style="margin-bottom:12px;">
-        Status: <strong style="color:${DATA.config.driveConnected?'var(--emerald)':'var(--text2)'}">${DATA.config.driveConnected?'✅ Conectado':'❌ Não conectado'}</strong>
+        Status: <strong style="color:${_driveAccessToken?'var(--emerald)':'var(--text2)'}">${_driveAccessToken?'✅ Conectado':'❌ Não conectado'}</strong>
       </div>
       <div class="config-row"><label>Google Client ID</label><input id="cfClientId" value="${esc(DATA.config.googleClientId||'')}" placeholder="Cole seu Google OAuth Client ID"></div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <button class="btn btn-sm btn-sky" onclick="salvarClientId()">💾 Salvar Client ID</button>
         <button class="btn btn-sm btn-emerald" onclick="connectGDrive()">🔗 Conectar Drive</button>
-        ${DATA.config.driveConnected?`<button class="btn btn-sm btn-primary" onclick="saveToGDrive()">☁ Salvar no Drive</button>`:''}
+        <!-- === NOVO: Google Drive === -->
+        <button class="btn btn-sm btn-primary" onclick="saveToGDrive()">☁ Salvar no Drive</button>
+        <button class="btn btn-sm btn-amber" onclick="restoreFromGDrive()">⬇ Restaurar do Drive</button>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.6;">
         Para configurar: (1) Crie um projeto em <strong>Google Cloud Console</strong>; (2) Ative a Drive API; (3) Crie credenciais OAuth 2.0; (4) Adicione seu domínio como origem autorizada.
@@ -3493,6 +3674,17 @@ function checkAlerts(){
       if(pct>=100) alertas.push({icon:'💳',msg:`<strong>Cartão ${esc(cat.nome)}:</strong> limite ultrapassado`,urg:2});
     }
   });
+  /* === NOVO: Previsões — alertas === */
+  {
+    const m2=mes(); const a2=ano(); const maCheck=a2+'-'+pad(m2);
+    const prevsAtual=DATA.previsoes.filter(p=>p.mesAno===maCheck);
+    prevsAtual.forEach(prev=>{
+      const realizado=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(maCheck)&&x.tipo===prev.tipo).reduce((s,x)=>s+x.valor,0);
+      if(realizado>prev.valorPrevisto){
+        alertas.push({icon:'⚠️',msg:`<strong>${esc(prev.tipo)}</strong> ultrapassou a previsão do mês! (${fmtR(realizado)} / ${fmtR(prev.valorPrevisto)})`,urg:2});
+      }
+    });
+  }
   alertas.sort((a,b)=>b.urg-a.urg);
   const badge=document.getElementById('bellBadge');
   const list=document.getElementById('notifList');
@@ -3822,7 +4014,9 @@ function renderRelatorios(){
   document.getElementById('relGrid').innerHTML=`
     <div class="card" style="cursor:pointer;" onclick="relDespTipo()"><div class="card-label">Despesas por Tipo</div><div class="card-val c-coral" style="font-size:22px;">📊</div><div class="card-sub">Mês atual — por categoria</div></div>
     <div class="card" style="cursor:pointer;" onclick="relFluxo()"><div class="card-label">Fluxo de Caixa</div><div class="card-val c-emerald" style="font-size:22px;">📈</div><div class="card-sub">Entradas e saídas no período</div></div>
-    <div class="card" style="cursor:pointer;" onclick="relPatrimonio()"><div class="card-label">Evolução do Patrimônio</div><div class="card-val c-violet" style="font-size:22px;">🏦</div><div class="card-sub">Crescimento ao longo do tempo</div></div>`;
+    <div class="card" style="cursor:pointer;" onclick="relPatrimonio()"><div class="card-label">Evolução do Patrimônio</div><div class="card-val c-violet" style="font-size:22px;">🏦</div><div class="card-sub">Crescimento ao longo do tempo</div></div>
+    <!-- === NOVO: Previsões — Relatório === -->
+    <div class="card" style="cursor:pointer;" onclick="relPrevisaoRealizado()"><div class="card-label">Previsão vs Realizado</div><div class="card-val c-amber" style="font-size:22px;">📅</div><div class="card-sub">Compare metas com gastos reais</div></div>`;
 
   renderAdvancedReports();
 }
@@ -4047,12 +4241,215 @@ function relDespTipo(){
     },100);
   }
 }
+/* === NOVO: Previsões — Relatório Previsão vs Realizado === */
+function relPrevisaoRealizado(){
+  const maAtual = ano()+'-'+pad(mes());
+  let h = `<div class="adv-report-card">
+    <div class="adv-report-title">📅 Previsão vs Realizado</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <label style="margin:0;text-transform:none;font-size:12px;color:var(--text2);">Mês:</label>
+      <input type="month" id="relPrevMes" value="${maAtual}" style="width:auto;" onchange="relPrevisaoRealizado()">
+    </div>`;
+  const maSelected = document.getElementById('relPrevMes')?.value || maAtual;
+  const tiposDesp = DATA.tipos.filter(t=>t.classificacao==='DESPESA');
+  const prevsDoMes = DATA.previsoes.filter(p=>p.mesAno===maSelected);
+  // Calcular realizado agrupado por tipo
+  const realizado = {};
+  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(maSelected)).forEach(x=>{
+    const t=x.tipo||'Outros';
+    realizado[t]=(realizado[t]||0)+x.valor;
+  });
+  // Todos os tipos que têm previsão ou realizado
+  const todosOsTipos=new Set([...prevsDoMes.map(p=>p.tipo),...Object.keys(realizado)]);
+  if(todosOsTipos.size===0){
+    h+='<div style="color:var(--text3);padding:16px;">Nenhum dado para este mês.</div>';
+  } else {
+    h+=`<div class="table-wrap"><table>
+      <tr><th>Tipo</th><th style="text-align:right;">Previsto</th><th style="text-align:right;">Realizado</th><th style="text-align:right;">Diferença</th><th style="text-align:right;">% Atingido</th></tr>`;
+    Array.from(todosOsTipos).sort().forEach(tipo=>{
+      const prev=prevsDoMes.find(p=>p.tipo===tipo);
+      const prevVal=prev?prev.valorPrevisto:null;
+      const realVal=realizado[tipo]||0;
+      const diff=prevVal!==null?prevVal-realVal:null;
+      const pct=prevVal>0?(realVal/prevVal*100):null;
+      const overbudget=prevVal!==null&&realVal>prevVal;
+      h+=`<tr class="${overbudget?'prev-overbudget':''}">
+        <td style="font-weight:600;">${esc(tipo)}</td>
+        <td class="mono" style="text-align:right;">${prevVal!==null?fmtR(prevVal):'<span style="color:var(--text3);">—</span>'}</td>
+        <td class="mono ${realVal>0?'c-coral':''}" style="text-align:right;">${fmtR(realVal)}</td>
+        <td class="mono prev-diff" style="text-align:right;color:${diff===null?'var(--text3)':diff>=0?'var(--emerald)':'var(--coral)'};">${diff===null?'—':(diff>=0?'+':'')+fmtR(diff)}</td>
+        <td style="text-align:right;font-size:12px;">${pct!==null?`<span style="color:${pct<=100?'var(--emerald)':'var(--coral)'};">${pct.toFixed(0)}%</span>`:'—'}</td>
+      </tr>`;
+    });
+    h+='</table></div>';
+  }
+  h+='</div>';
+  document.getElementById('relContent').innerHTML=h;
+  // Re-attach change event
+  const sel=document.getElementById('relPrevMes');
+  if(sel) sel.addEventListener('change',relPrevisaoRealizado);
+}
+
 function relFluxo(){ navigateTo('relatorios'); }
 function relPatrimonio(){ navigateTo('relatorios'); }
 
 // ================================================================
 // INIT
 // ================================================================
+
+/* === NOVO: Previsões === */
+// ================================================================
+// MÓDULO DE PREVISÕES ORÇAMENTÁRIAS
+// ================================================================
+function renderPrevisoes(){
+  const maAtual = ano()+'-'+pad(mes());
+  const tiposDesp = DATA.tipos.filter(t=>t.classificacao==='DESPESA');
+  const c = document.getElementById('previsoesContent');
+  if(!c) return;
+  c.innerHTML = `
+  <!-- SEÇÃO A: Edição de Previsões -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="sec-header" style="margin-top:0;"><span class="sec-title">📝 Editar Previsões do Mês</span><div class="sec-line"></div></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <div><label>Mês de Referência</label><input type="month" id="prevMesEdit" value="${maAtual}" style="width:auto;"></div>
+      <div style="display:flex;gap:8px;margin-top:18px;">
+        <button class="btn btn-primary btn-sm" onclick="salvarPrevisoes()">💾 Salvar Previsões</button>
+        <button class="btn btn-sm btn-amber" onclick="copiarMesAnterior()">📋 Copiar Mês Anterior</button>
+      </div>
+    </div>
+    <div id="prevFormList"></div>
+  </div>
+
+  <!-- SEÇÃO B: Tabela de Previsões Cadastradas -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="sec-header" style="margin-top:0;"><span class="sec-title">📋 Previsões Cadastradas</span><div class="sec-line"></div></div>
+    <div id="prevTabelaAll"></div>
+  </div>`;
+
+  // Preenche formulário com mês atual
+  renderPrevForm(maAtual);
+  renderPrevTabela();
+
+  // Re-render ao mudar mês
+  document.getElementById('prevMesEdit').addEventListener('change', function(){
+    renderPrevForm(this.value);
+  });
+}
+
+function renderPrevForm(mesAno){
+  const tiposDesp = DATA.tipos.filter(t=>t.classificacao==='DESPESA');
+  const prevsDoMes = DATA.previsoes.filter(p=>p.mesAno===mesAno);
+  const list = document.getElementById('prevFormList');
+  if(!list) return;
+  if(!tiposDesp.length){
+    list.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px;">Nenhum tipo de despesa cadastrado.</div>';
+    return;
+  }
+  list.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">` +
+    tiposDesp.map(t=>{
+      const prev = prevsDoMes.find(p=>p.tipo===t.nome);
+      return `<div class="prev-tipo-row">
+        <span class="prev-tipo-label">${esc(t.emoji||'')} ${esc(t.nome)}</span>
+        <input type="number" step="0.01" min="0" class="prev-tipo-input" id="prev_${encodeURIComponent(t.nome)}" value="${prev?prev.valorPrevisto:''}" placeholder="R$ 0,00" style="width:120px;">
+      </div>`;
+    }).join('') + `</div>`;
+}
+
+function salvarPrevisoes(){
+  const mesAno = document.getElementById('prevMesEdit')?.value;
+  if(!mesAno) return showToast('⚠️ Selecione o mês','var(--amber)');
+  const tiposDesp = DATA.tipos.filter(t=>t.classificacao==='DESPESA');
+  // Remove previsões antigas do mês
+  DATA.previsoes = DATA.previsoes.filter(p=>p.mesAno!==mesAno);
+  tiposDesp.forEach(t=>{
+    const inp = document.getElementById('prev_'+encodeURIComponent(t.nome));
+    const val = parseFloat(inp?.value);
+    if(val>0){
+      DATA.previsoes.push({
+        id: genId('PRV'),
+        mesAno,
+        tipo: t.nome,
+        valorPrevisto: val
+      });
+    }
+  });
+  save(true);
+  renderPrevTabela();
+  showToast('✅ Previsões do mês salvas!','var(--emerald)');
+}
+
+function copiarMesAnterior(){
+  const mesAno = document.getElementById('prevMesEdit')?.value;
+  if(!mesAno) return showToast('⚠️ Selecione o mês','var(--amber)');
+  // Encontra mês anterior com dados
+  const [aa, mm] = mesAno.split('-').map(Number);
+  let pm=mm-1, pa=aa;
+  if(pm<1){ pm=12; pa=aa-1; }
+  const mesAnoAnterior = pa+'-'+pad(pm);
+  const prevsAnt = DATA.previsoes.filter(p=>p.mesAno===mesAnoAnterior);
+  if(!prevsAnt.length){
+    // Tenta meses mais antigos (até 12 meses atrás)
+    let found=null;
+    for(let i=2;i<=12;i++){
+      let pmi=mm-i, pai=aa;
+      while(pmi<1){ pmi+=12; pai--; }
+      const maCheck=pai+'-'+pad(pmi);
+      const pCheck=DATA.previsoes.filter(p=>p.mesAno===maCheck);
+      if(pCheck.length){ found=pCheck; break; }
+    }
+    if(!found) return showToast('⚠️ Nenhum mês anterior com previsões encontrado','var(--amber)');
+    prevsAnt.push(...found);
+  }
+  // Preenche campos sem salvar
+  prevsAnt.forEach(prev=>{
+    const el = document.getElementById('prev_'+encodeURIComponent(prev.tipo));
+    if(el) el.value = prev.valorPrevisto;
+  });
+  showToast('📋 Valores do mês anterior copiados. Clique em Salvar para confirmar.','var(--orange)',4000);
+}
+
+function renderPrevTabela(){
+  const wrap = document.getElementById('prevTabelaAll');
+  if(!wrap) return;
+  if(!DATA.previsoes.length){
+    wrap.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px;text-align:center;">Nenhuma previsão cadastrada ainda.</div>';
+    return;
+  }
+  // Ordenar por mesAno desc, tipo asc
+  const sorted = [...DATA.previsoes].sort((a,b)=>b.mesAno.localeCompare(a.mesAno)||a.tipo.localeCompare(b.tipo));
+  wrap.innerHTML = `<div class="table-wrap"><table>
+    <tr><th>Mês/Ano</th><th>Tipo</th><th style="text-align:right;">Valor Previsto</th><th>Ações</th></tr>
+    ${sorted.map(p=>`<tr>
+      <td class="mono" style="font-size:12px;">${p.mesAno}</td>
+      <td style="font-weight:500;">${esc(p.tipo)}</td>
+      <td class="mono c-amber" style="text-align:right;">${fmtR(p.valorPrevisto)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-xs btn-edit" onclick="editarPrevisao('${p.id}')">✏ Editar</button>
+        <button class="btn btn-xs btn-danger" onclick="excluirPrevisao('${p.id}')">🗑</button>
+      </td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+
+window.editarPrevisao = function(id){
+  const p = DATA.previsoes.find(x=>x.id===id); if(!p) return;
+  const mesEl = document.getElementById('prevMesEdit');
+  if(mesEl){ mesEl.value=p.mesAno; renderPrevForm(p.mesAno); }
+  // Preenche o campo específico
+  setTimeout(()=>{
+    const inp=document.getElementById('prev_'+encodeURIComponent(p.tipo));
+    if(inp){ inp.value=p.valorPrevisto; inp.focus(); inp.select(); }
+  },80);
+  showToast('✏️ Edite o valor e clique em Salvar Previsões','var(--orange)',3500);
+};
+
+window.excluirPrevisao = function(id){
+  if(!confirm('Excluir esta previsão?')) return;
+  DATA.previsoes = DATA.previsoes.filter(x=>x.id!==id);
+  save(true);
+  renderPrevisoes();
+  showToast('🗑 Previsão excluída');
+};
 
 // ================================================================
 // MOTOR DE SUBTIPOS — ENGINE COMPLETO (v2)
