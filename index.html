@@ -1207,6 +1207,13 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
       </div>
     </div>
 
+    <!-- v4.3: Transferências Internas -->
+    <div class="sec-header" style="margin-top:8px;">
+      <span class="sec-title" style="color:var(--violet);">🔁 Transferências Internas Recentes</span>
+      <div class="sec-line" style="background:linear-gradient(90deg,rgba(155,109,255,.4),transparent);"></div>
+    </div>
+    <div id="dashTrfs" style="margin-bottom:8px;"></div>
+
     <!-- RESUMO ANUAL -->
     <div class="sec-header" style="margin-top:8px;"><span class="sec-title">◈ Resumo Anual</span><div class="sec-line"></div></div>
     <div id="dashResumoAnual"></div>
@@ -1453,7 +1460,8 @@ let DATA = {
   historicoFatura:[], auditoria:[],
   terceiros:[], movTerceiros:[],
   /* === NOVO: Previsões === */
-  previsoes:[]
+  previsoes:[],
+  transferencias:[]
 };
 let currentMod = 'dashboard';
 let contaSel = null;
@@ -1461,6 +1469,41 @@ let terceiroSel = null;
 let charts = {};
 
 // ---- INIT ----
+
+// v4.3 — Transferências internas recentes (função separada — sem strings JS aninhadas)
+function gotoDashTrfs(){ navigateTo('contas'); }
+function renderDashTrfs(){
+  var el=document.getElementById('dashTrfs');
+  if(!el) return;
+  var trfs=(DATA.transferencias||[]).filter(function(t){return t.status!=='ANULADO';});
+  trfs.sort(function(a,b){return (b.data||'').localeCompare(a.data||'');});
+  trfs=trfs.slice(0,6);
+  if(!trfs.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:10px 0;">Nenhuma transferência interna. Use o botão ⇄ Transferência nas contas para mover saldo entre contas.</div>';
+    return;
+  }
+  var head='<div class="table-wrap"><table>'
+    +'<tr><th>Data</th><th>Origem</th><th></th><th>Destino</th><th>Descrição</th><th style="text-align:right;">Valor</th></tr>';
+  var rows='';
+  trfs.forEach(function(t){
+    var orig=DATA.contas.find(function(c){return c.id===t.contaOrigemId;});
+    var dest=DATA.contas.find(function(c){return c.id===t.contaDestinoId;});
+    var oN=orig ? esc(orig.emoji||'')+' '+esc(orig.nome) : '—';
+    var dN=dest ? esc(dest.emoji||'')+' '+esc(dest.nome) : '—';
+    rows+='<tr>'
+      +'<td style="white-space:nowrap;">'+fmtD(t.data)+'</td>'
+      +'<td style="font-size:11px;">'+oN+'</td>'
+      +'<td style="font-size:11px;color:var(--violet);font-weight:700;">→</td>'
+      +'<td style="font-size:11px;">'+dN+'</td>'
+      +'<td style="font-size:11px;color:var(--text2);">'+esc(t.descricao||'—')+'</td>'
+      +'<td class="mono c-violet" style="text-align:right;font-weight:700;">'+fmtR(t.valor)+'</td>'
+      +'</tr>';
+  });
+  var foot='</table></div>'
+    +'<a style="font-size:11px;color:var(--violet);cursor:pointer;margin-top:6px;display:inline-block;" onclick="gotoDashTrfs()">Ver extrato completo →</a>';
+  el.innerHTML=head+rows+foot;
+}
+
 function init(){
   loadData();
   if(!DATA.tipos.length) seedTipos();
@@ -1484,7 +1527,7 @@ function init(){
       sidebar.classList.remove('open');
     }
   });
-  if(!DATA.config.driveDismissed && localStorage.getItem('nexus_drive_skip')!=='1') setTimeout(()=>{ openDriveModal(); }, 1200);
+  if(localStorage.getItem('nexus_drive_skip')!=='1') setTimeout(()=>{ openDriveModal(); }, 1200);
   /* === NOVO: Google Drive — check nexus_drive_skip === */
   updateDriveStatus();
 }
@@ -1500,12 +1543,30 @@ function loadData(){
     config:{nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false},
     historicoFatura:[],auditoria:[],terceiros:[],movTerceiros:[],
     /* === NOVO: Previsões — migração === */
-    previsoes:[]
+    previsoes:[],
+    transferencias:[]
   };
   // Migração v4.1: garantir subTipos sempre como array
   if(!Array.isArray(DATA.subTipos)) DATA.subTipos=[];
   /* === NOVO: Previsões — migração === */
   if(!Array.isArray(DATA.previsoes)) DATA.previsoes=[];
+  if(!Array.isArray(DATA.transferencias)) DATA.transferencias=[];
+  // Migração legado: converte antigas movs de transferência para tabela exclusiva
+  !function(){
+    var g={};
+    DATA.movimentacoes.forEach(function(m){
+      if(m.transferenciaId&&m.tipo==='Transferência'){g[m.transferenciaId]=g[m.transferenciaId]||[];g[m.transferenciaId].push(m);}
+    });
+    Object.keys(g).forEach(function(bid){
+      if(DATA.transferencias.some(function(t){return t._lid===bid;})) return;
+      var d=null,r=null;
+      g[bid].forEach(function(m){if(m.tipoOp==='DESPESA')d=m;else r=m;});
+      if(d&&r){
+        DATA.transferencias.push({id:bid,_lid:bid,contaOrigemId:d.contaId,contaDestinoId:r.contaId,valor:d.valor,data:d.data,descricao:(d.descricao||'').replace('⇄ Transf.: ',''),status:'ATIVO',criadoEm:d.criadoEm||new Date().toISOString()});
+        DATA.movimentacoes=DATA.movimentacoes.filter(function(m){return m.transferenciaId!==bid;});
+      }
+    });
+  }();
   Object.keys(d).forEach(k=>{ if(DATA[k]===undefined||DATA[k]===null) DATA[k]=d[k]; });
   if(!DATA.config) DATA.config=d.config;
   ['nome','rendaMensal','diaFechamento','driveDismissed'].forEach(k=>{
@@ -1614,7 +1675,10 @@ function destroyCharts(){
 // ---- SALDO CONTA ----
 function saldoConta(id){
   const ini=DATA.contas.find(c=>c.id===id)?.saldoInicial||0;
-  return ini + DATA.movimentacoes.filter(m=>m.contaId===id&&m.status!=='ANULADO').reduce((s,m)=>s+(m.tipoOp==='RECEITA'?m.valor:-m.valor),0);
+  const movSaldo=DATA.movimentacoes.filter(m=>m.contaId===id&&m.status!=='ANULADO'&&m.tipo!=='Transferência').reduce((s,m)=>s+(m.tipoOp==='RECEITA'?m.valor:-m.valor),0);
+  const trfOut=(DATA.transferencias||[]).filter(t=>t.contaOrigemId===id&&t.status!=='ANULADO').reduce((s,t)=>s-t.valor,0);
+  const trfIn =(DATA.transferencias||[]).filter(t=>t.contaDestinoId===id&&t.status!=='ANULADO').reduce((s,t)=>s+t.valor,0);
+  return ini+movSaldo+trfOut+trfIn;
 }
 
 // ---- CARD HTML ----
@@ -1755,8 +1819,8 @@ function renderDashboard(){
   const proj = totRecM - totPagarM;
 
   const rendaMensal=DATA.config.rendaMensal||0;
-  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
-  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
   const saldoMes=recMes-despMes;
   const pctMeta=rendaMensal>0?(despMes/rendaMensal*100):0;
   const metaStatus=rendaMensal>0?(pctMeta>=100?'EXCEDIDA':pctMeta>=80?'EM RISCO':'ATINGIDA'):'—';
@@ -1816,6 +1880,7 @@ function renderDashboard(){
     <div class="flow-step"><div class="flow-step-label">Saldo Atual</div><div class="flow-step-val c-emerald">${fmtR(saldoTot)}</div></div>
     <div class="flow-step"><div class="flow-step-label">Compromissos</div><div class="flow-step-val c-coral">-${fmtR(totPagarM)}</div></div>
     <div class="flow-step"><div class="flow-step-label">Saldo Projetado</div><div class="flow-step-val ${(saldoTot-totPagarM)>=0?'c-emerald':'c-coral'}">${fmtR(saldoTot-totPagarM)}</div></div>`;
+  renderDashTrfs();
 
   const proxPag = DATA.pagar.filter(p=>p.status!=='PAGO').sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||'')).slice(0,8);
   let hPag=`<div class="table-wrap"><table><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr>`;
@@ -1850,8 +1915,8 @@ function renderDashboard(){
   } else {
     DATA.contas.forEach(c=>{
       const saldo=saldoConta(c.id);
-      const entMes=DATA.movimentacoes.filter(x=>x.contaId===c.id&&x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
-      const saidMes=DATA.movimentacoes.filter(x=>x.contaId===c.id&&x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+      const entMes=DATA.movimentacoes.filter(x=>x.contaId===c.id&&x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+      const saidMes=DATA.movimentacoes.filter(x=>x.contaId===c.id&&x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
       const varMes=entMes-saidMes;
       const varCls=varMes>=0?'c-emerald':'c-coral';
       const varSinal=varMes>=0?'+':'';
@@ -1866,8 +1931,8 @@ function renderDashboard(){
   document.getElementById('dashSaldoConta').innerHTML=hContas;
 
   // ---- TOP MOVIMENTAÇÕES (maiores despesas vs maiores entradas do mês) ----
-  const topDesp=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).sort((a,b)=>b.valor-a.valor).slice(0,5);
-  const topRec=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).sort((a,b)=>b.valor-a.valor).slice(0,5);
+  const topDesp=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').sort((a,b)=>b.valor-a.valor).slice(0,5);
+  const topRec=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').sort((a,b)=>b.valor-a.valor).slice(0,5);
   let hMovs=`<div class="table-wrap"><table>
     <tr><th>Tipo</th><th>Descrição</th><th>Valor</th></tr>`;
   if(topRec.length===0&&topDesp.length===0){
@@ -1884,8 +1949,8 @@ function renderDashboard(){
   let totEntAno=0,totSaiAno=0;
   for(let mi=1;mi<=12;mi++){
     const mStr=a+'-'+pad(mi);
-    const ent=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr)).reduce((s,x)=>s+x.valor,0);
-    const sai=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr)).reduce((s,x)=>s+x.valor,0);
+    const ent=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+    const sai=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
     totEntAno+=ent; totSaiAno+=sai;
     meses.push({mes:mi,ent,sai,saldo:ent-sai});
   }
@@ -1955,8 +2020,8 @@ function renderDashboard(){
     const d=new Date(a,m-1-i,1);
     const mi2=d.getMonth()+1; const ai2=d.getFullYear();
     const mStr2=ai2+'-'+pad(mi2);
-    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
-    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
     labels6.push(nomeMes(mi2)+'/'+String(ai2).slice(2));
     ents6.push(e); sais6.push(s);
     saldos6.push(e-s);
@@ -1976,7 +2041,7 @@ function renderDashboard(){
 
   // Chart 2: Despesas por Tipo
   const tiposDesp={};
-  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).forEach(x=>{ tiposDesp[x.tipo||'Outros']=(tiposDesp[x.tipo||'Outros']||0)+x.valor; });
+  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').forEach(x=>{ tiposDesp[x.tipo||'Outros']=(tiposDesp[x.tipo||'Outros']||0)+x.valor; });
   const tLabels=Object.keys(tiposDesp).slice(0,8);
   const tVals=tLabels.map(k=>tiposDesp[k]);
   const tCols=['rgba(255,122,0,.7)','rgba(155,109,255,.7)','rgba(56,205,255,.7)','rgba(255,184,48,.7)','rgba(0,229,160,.7)','rgba(255,77,106,.7)','rgba(255,107,157,.7)','rgba(100,180,255,.7)'];
@@ -2048,9 +2113,13 @@ function selectConta(id){ contaSel=id; renderContas(); }
 function renderContaDetail(id){
   const c=DATA.contas.find(x=>x.id===id); if(!c) return;
   const saldo=saldoConta(id);
-  const movs=DATA.movimentacoes.filter(m=>m.contaId===id).sort((a,b)=>b.data.localeCompare(a.data));
+  const movs=DATA.movimentacoes.filter(m=>m.contaId===id&&m.tipo!=='Transferência').sort((a,b)=>b.data.localeCompare(a.data));
   const showAnul=window._showAnul||false;
+  const showTrf=window._showTrf||false;
   const listaMovs=showAnul?movs:movs.filter(m=>m.status!=='ANULADO');
+  const trfsOut=(DATA.transferencias||[]).filter(t=>t.contaOrigemId===id&&t.status!=='ANULADO');
+  const trfsIn =(DATA.transferencias||[]).filter(t=>t.contaDestinoId===id&&t.status!=='ANULADO');
+  const nTrfs=trfsOut.length+trfsIn.length;
 
   document.getElementById('contaDetail').innerHTML=`
   <div class="card" style="margin-bottom:16px;">
@@ -2074,6 +2143,7 @@ function renderContaDetail(id){
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
     <div class="sec-title">Extrato</div>
     <span class="show-anulados-toggle" onclick="toggleAnulados()">${showAnul?'Ocultar anulados':'Mostrar anulados'}</span>
+    <span class="show-anulados-toggle" onclick="toggleTransferencias()" style="background:${showTrf?'rgba(155,109,255,.15)':'rgba(155,109,255,.05)'};color:var(--violet);border-color:rgba(155,109,255,.3);">🔁 ${showTrf?'Ocultar':'Mostrar'} transferências (${nTrfs})</span>
   </div>
 
   <div class="table-wrap">
@@ -2101,11 +2171,47 @@ function renderContaDetail(id){
           </td>
         </tr>`;
       }).join('')}
+    ${showTrf ? (()=>{
+      let rowsTrf='';
+      trfsOut.forEach(t=>{
+        const dc=DATA.contas.find(c=>c.id===t.contaDestinoId);
+        rowsTrf+=`<tr style="background:rgba(155,109,255,.04);">
+          <td style="white-space:nowrap;">${fmtD(t.data)}</td>
+          <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.15);color:var(--violet);border:1px solid rgba(155,109,255,.3);font-weight:700;">🔁 TRANSF.</span></td>
+          <td style="font-weight:500;color:var(--violet);">→ ${dc?esc(dc.emoji||'')+' '+esc(dc.nome):'?'} — ${esc(t.descricao||'')}</td>
+          <td style="font-size:11px;color:var(--text3);">Transferência Interna</td>
+          <td><span style="color:var(--text4);">—</span></td>
+          <td class="mono c-coral" style="text-align:right;font-weight:700;">-${fmtR(t.valor)}</td>
+          <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.08);color:var(--violet);">INTERNO</span></td>
+          <td><button class="btn btn-xs btn-danger" onclick="excluirTrf('${t.id}')">🗑</button></td>
+        </tr>`;
+      });
+      trfsIn.forEach(t=>{
+        const oc=DATA.contas.find(c=>c.id===t.contaOrigemId);
+        rowsTrf+=`<tr style="background:rgba(0,229,160,.03);">
+          <td style="white-space:nowrap;">${fmtD(t.data)}</td>
+          <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.15);color:var(--violet);border:1px solid rgba(155,109,255,.3);font-weight:700;">🔁 TRANSF.</span></td>
+          <td style="font-weight:500;color:var(--emerald);">← ${oc?esc(oc.emoji||'')+' '+esc(oc.nome):'?'} — ${esc(t.descricao||'')}</td>
+          <td style="font-size:11px;color:var(--text3);">Transferência Interna</td>
+          <td><span style="color:var(--text4);">—</span></td>
+          <td class="mono c-emerald" style="text-align:right;font-weight:700;">+${fmtR(t.valor)}</td>
+          <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.08);color:var(--violet);">INTERNO</span></td>
+          <td>—</td>
+        </tr>`;
+      });
+      return rowsTrf;
+    })() : ''}
     </table>
   </div>`;
 }
 
 window.toggleAnulados=function(){ window._showAnul=!window._showAnul; renderContaDetail(contaSel); };
+window.toggleTransferencias=function(){ window._showTrf=!window._showTrf; renderContaDetail(contaSel); };
+window.excluirTrf=function(id){
+  if(!confirm('Excluir esta transferência? Os saldos serão revertidos.')) return;
+  DATA.transferencias=(DATA.transferencias||[]).filter(t=>t.id!==id);
+  save(true); renderContaDetail(contaSel); renderDashboard(); toast('🗑 Transferência excluída');
+};
 
 function anularMovimentacao(id){
   const m=DATA.movimentacoes.find(x=>x.id===id); if(!m) return;
@@ -2325,17 +2431,20 @@ function modalTransferencia(){
   if(DATA.contas.length<2) return toast('⚠️ Você precisa de pelo menos 2 contas','var(--amber)');
   const opts=DATA.contas.map(c=>`<option value="${c.id}">${esc(c.emoji||'')} ${esc(c.nome)}</option>`).join('');
   const h=`
-  <div class="info-block">Uma transferência cria <strong>1 DESPESA</strong> na conta de origem e <strong>1 RECEITA</strong> na conta de destino.</div>
+  <div class="info-block" style="border-color:rgba(155,109,255,.35);background:rgba(155,109,255,.07);">
+    <strong style="color:var(--violet);">🔁 Transferência Interna — Movimento Neutro</strong><br>
+    <span style="font-size:11px;color:var(--text2);">Move saldo entre contas. <strong>NÃO gera despesa nem receita.</strong></span>
+  </div>
   <div class="mrow">
     <div><label>Conta Origem</label><select id="tfOrig">${opts}</select></div>
     <div><label>Conta Destino</label><select id="tfDest">${opts}</select></div>
   </div>
   <div class="mrow">
-    <div><label>Valor R$</label><input id="tfVal" type="number" step="0.01"></div>
+    <div><label>Valor R$</label><input id="tfVal" type="number" step="0.01" min="0.01"></div>
     <div><label>Data</label><input id="tfDt" type="date" value="${hoje()}"></div>
   </div>
-  <div class="mrow single"><div><label>Descrição</label><input id="tfDesc" placeholder="Ex: Transferência reserva"></div></div>`;
-  openModal('Transferência Entre Contas','⇄',h,()=>{
+  <div class="mrow single"><div><label>Descrição</label><input id="tfDesc" placeholder="Ex: Transferência para reserva"></div></div>`;
+  openModal('Transferência Entre Contas','🔁',h,()=>{
     const orig=document.getElementById('tfOrig').value;
     const dest=document.getElementById('tfDest').value;
     const val=parseFloat(document.getElementById('tfVal').value);
@@ -2343,10 +2452,10 @@ function modalTransferencia(){
     const desc=document.getElementById('tfDesc').value||'Transferência';
     if(orig===dest) return toast('⚠️ Contas devem ser diferentes','var(--amber)');
     if(!val||val<=0) return toast('⚠️ Valor inválido','var(--amber)');
-    const baseId=genId('TRF');
-    DATA.movimentacoes.push({id:genId('MOV'),contaId:orig,tipoOp:'DESPESA',data,descricao:'⇄ Transf.: '+desc,tipo:'Transferência',valor:val,status:'ATIVO',transferenciaId:baseId,criadoEm:new Date().toISOString()});
-    DATA.movimentacoes.push({id:genId('MOV'),contaId:dest,tipoOp:'RECEITA',data,descricao:'⇄ Transf.: '+desc,tipo:'Transferência',valor:val,status:'ATIVO',transferenciaId:baseId,criadoEm:new Date().toISOString()});
-    save(true); renderContas(); toast('✅ Transferência realizada'); closeAllModals();
+    if(saldoConta(orig)<val) return toast('⚠️ Saldo insuficiente na conta de origem','var(--coral)');
+    if(!Array.isArray(DATA.transferencias)) DATA.transferencias=[];
+    DATA.transferencias.push({id:genId('TRF'),contaOrigemId:orig,contaDestinoId:dest,valor:val,data,descricao:desc,status:'ATIVO',criadoEm:new Date().toISOString()});
+    save(true); renderContas(); renderDashboard(); toast('✅ Transferência registrada — movimento interno'); closeAllModals();
   });
 }
 
@@ -3762,7 +3871,7 @@ function seedTipos(){
     {id:genId('TP'),nome:'Freelance',classificacao:'RECEITA',emoji:'💼'},
     {id:genId('TP'),nome:'Investimentos',classificacao:'RECEITA',emoji:'📈'},
     {id:genId('TP'),nome:'Outros Recebimentos',classificacao:'RECEITA',emoji:'💵'},
-    {id:genId('TP'),nome:'Transferência Recebida',classificacao:'RECEITA',emoji:'⇄'},
+    //{id:genId('TP'),nome:'Transferência Recebida',classificacao:'RECEITA',emoji:'⇄'}, // v4.3: removido
     {id:genId('TP'),nome:'Alimentação',classificacao:'DESPESA',emoji:'🍔'},
     {id:genId('TP'),nome:'Moradia',classificacao:'DESPESA',emoji:'🏠'},
     {id:genId('TP'),nome:'Transporte',classificacao:'DESPESA',emoji:'🚗'},
@@ -3772,7 +3881,7 @@ function seedTipos(){
     {id:genId('TP'),nome:'Telecom',classificacao:'DESPESA',emoji:'📱'},
     {id:genId('TP'),nome:'CARTÃO',classificacao:'DESPESA',emoji:'💳'},
     {id:genId('TP'),nome:'Investimento',classificacao:'DESPESA',emoji:'📈'},
-    {id:genId('TP'),nome:'Transferência',classificacao:'DESPESA',emoji:'⇄'},
+    //{id:genId('TP'),nome:'Transferência',classificacao:'DESPESA',emoji:'⇄'}, // v4.3: removido
     {id:genId('TP'),nome:'Parcelamento',classificacao:'DESPESA',emoji:'📋'},
     {id:genId('TP'),nome:'Pagamento',classificacao:'DESPESA',emoji:'✅'},
   ];
@@ -3963,8 +4072,8 @@ function renderRelatorios(){
   // Painel KPI Avançado (6.4)
   const a=ano(); const m=mes(); const ma=a+'-'+pad(m);
   const totSaldo=DATA.contas.reduce((s,c)=>s+saldoConta(c.id),0);
-  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
-  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
   const taxaPoupanca=recMes>0?(((recMes-despMes)/recMes)*100):0;
   // Saldo médio últimos 6 meses
   let saldoAcum=0; let mCount=0;
@@ -3972,8 +4081,8 @@ function renderRelatorios(){
     const d2=new Date(a,m-1-i,1);
     const mi2=d2.getMonth()+1; const ai2=d2.getFullYear();
     const mStr2=ai2+'-'+pad(mi2);
-    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
-    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
     saldoAcum+=(e-s); mCount++;
   }
   const saldoMedio=mCount>0?saldoAcum/mCount:0;
@@ -4031,8 +4140,8 @@ function renderAdvancedReports(){
     const d2=new Date(a,m-1-i,1);
     const mi2=d2.getMonth()+1; const ai2=d2.getFullYear();
     const mStr2=ai2+'-'+pad(mi2);
-    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
-    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)).reduce((s,x)=>s+x.valor,0);
+    const e=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+    const s=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(mStr2)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
     labels6.push(nomeMes(mi2)+'/'+String(ai2).slice(2));
     ents6.push(e); sais6.push(s); saldos6.push(e-s);
   }
@@ -4157,8 +4266,8 @@ window.updateWhatIf = function(){
   const totSaldo=DATA.contas.reduce((s,c)=>s+saldoConta(c.id),0);
   const m=mes(); const a=ano();
   const ma=a+'-'+pad(m);
-  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
-  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).reduce((s,x)=>s+x.valor,0);
+  const recMes=DATA.movimentacoes.filter(x=>x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
+  const despMes=DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').reduce((s,x)=>s+x.valor,0);
   const novaRec=recMes*(1+renda/100);
   const mensalAjustado=(novaRec-despMes)+econ;
   const proj12=totSaldo+mensalAjustado*12;
@@ -4184,7 +4293,7 @@ function relDespTipo(){
   // Agrupa por tipo E subtipo
   const porTipo={};
   const porSubtipo={}; // porSubtipo[tipo][subtipo]
-  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)).forEach(x=>{
+  DATA.movimentacoes.filter(x=>x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data?.startsWith(ma)&&x.tipo!=='Transferência').forEach(x=>{
     const t=x.tipo||'Outros'; const s=x.subtipo||'';
     porTipo[t]=(porTipo[t]||0)+x.valor;
     if(!porSubtipo[t]) porSubtipo[t]={};
