@@ -4972,11 +4972,11 @@ function renderDashboardV44() {
   var cardProxMes =
     '<div class="card"><span class="card-badge bg-amber">PRÓXIMO MÊS</span>'+
     '<div class="card-label">Compromisso '+nomeMes(pm)+'/'+pa2+'</div>'+
-    '<div class="card-val c-amber">'+fmtR(pagarPM+cartAc)+'</div>'+
-    '<div class="card-sub">Contas + Cartão acumulado</div>'+
+    '<div class="card-val c-amber">'+fmtR(pagarPM)+'</div>'+
+    '<div class="card-sub">Contas a pagar em '+nomeMes(pm)+'/'+pa2+'</div>'+
     '<div class="card-detail">'+
-    '<div class="card-detail-row"><span>📅 Contas a pagar</span><strong class="c-amber">'+fmtR(pagarPM)+'</strong></div>'+
-    '<div class="card-detail-row"><span>💳 Cartão acumulado</span><strong class="c-amber">'+fmtR(cartAc)+'</strong></div>'+
+    '<div class="card-detail-row"><span>📅 Lançamentos</span><strong class="c-amber">'+DATA.pagar.filter(function(p){return p.vencimento&&p.vencimento.startsWith(pms)&&p.status!=='PAGO';}).length+' item(s)</strong></div>'+
+    '<div class="card-detail-row"><span>💰 Total</span><strong class="c-amber">'+fmtR(pagarPM)+'</strong></div>'+
     '</div></div>';
 
   // ---- NOVOS 2 CARDS ----
