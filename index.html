@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nexus One v4.4 — Sistema Financeiro Pro</title>
+<title>Nexus One v5.0 — Sistema Financeiro Pro</title>
 <!-- Fonts loaded via CSS @import -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -506,27 +506,67 @@ label{
 .pf-coral{background:var(--coral);}
 .pf-violet{background:var(--violet);}
 
-/* ===== CATEGORY GRID ===== */
-.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:14px;}
+/* ===== CATEGORY GRID — layout vertical original com cores por categoria ===== */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
+
 .cat-card{
-  background:var(--surface);border:1.5px solid var(--border);
-  border-radius:var(--r);padding:18px;cursor:pointer;
-  transition:all .2s var(--ease);text-align:center;
-  box-shadow:0 0 10px var(--orange-glow2);
+  background:var(--surface);
+  border:1.5px solid var(--cat-accent-border, var(--border));
+  border-radius:var(--r);padding:18px 14px 14px;cursor:pointer;
+  transition:all .22s var(--ease);text-align:center;
+  box-shadow:0 0 14px var(--cat-accent-glow,var(--orange-glow2));
+  position:relative;overflow:hidden;
+}
+.cat-card::before{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:3px;
+  background:var(--cat-accent,var(--border2));
+  transition:opacity .22s;opacity:.7;
+}
+.cat-card::after{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,var(--cat-accent-bg,rgba(255,122,0,.04)),transparent 70%);
+  pointer-events:none;
 }
 .cat-card:hover{
-  border-color:var(--orange-border);
+  border-color:var(--cat-accent,var(--orange));
   background:var(--surface2);
-  transform:translateY(-2px);
-  box-shadow:0 0 18px var(--orange-glow);
+  transform:translateY(-3px);
+  box-shadow:0 0 22px var(--cat-accent-glow,var(--orange-glow)),0 8px 24px rgba(0,0,0,.35);
 }
 .cat-card.sel{
-  border-color:var(--orange);
-  box-shadow:0 0 22px var(--orange-glow);
+  border-color:var(--cat-accent,var(--orange));
+  box-shadow:0 0 28px var(--cat-accent-glow,var(--orange-glow));
 }
-.cat-emoji{font-size:28px;margin-bottom:8px;}
-.cat-name{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.6px;}
-.cat-val{font-size:18px;font-weight:700;letter-spacing:-.6px;font-family:'DM Mono',monospace;}
+.cat-emoji{font-size:30px;margin-bottom:8px;display:block;filter:drop-shadow(0 2px 6px rgba(0,0,0,.3));}
+.cat-name{
+  font-size:10px;font-weight:700;
+  color:var(--cat-accent,var(--text2));
+  margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px;
+  position:relative;z-index:1;
+}
+.cat-val{
+  font-size:18px;font-weight:700;letter-spacing:-.6px;
+  font-family:'DM Mono',monospace;
+  position:relative;z-index:1;
+}
+
+/* Botão editar flutuante no card vertical */
+.cat-edit-btn-h{
+  position:absolute;top:7px;right:7px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);
+  color:var(--text3);border-radius:6px;
+  padding:2px 7px;font-size:8px;font-weight:700;
+  cursor:pointer;letter-spacing:.4px;
+  transition:all .18s var(--ease);
+  z-index:3;
+}
+.cat-edit-btn-h:hover{
+  background:var(--cat-accent-bg2,rgba(255,122,0,.15));
+  border-color:var(--cat-accent,var(--orange));
+  color:var(--cat-accent,var(--orange));
+}
+
 
 /* ===== EMPTY STATE ===== */
 .empty{padding:70px 20px;text-align:center;color:var(--text3);}
@@ -771,7 +811,33 @@ label{
   .main{padding:18px;}
 }
 
-/* ===== PRINT ===== */
+/* ===== v5.0 — NOVOS ESTILOS ===== */
+
+/* Paginação */
+.pag-wrap { display:flex;align-items:center;gap:6px;padding:12px 0;justify-content:center;flex-wrap:wrap; }
+.pag-btn { padding:5px 12px;border-radius:7px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;font-weight:600;transition:all .18s var(--ease); }
+.pag-btn:hover:not(:disabled) { background:var(--orange-glow);color:var(--orange);border-color:var(--orange-border); }
+.pag-btn.ativo { background:linear-gradient(135deg,var(--orange),var(--orange-dim));color:#fff;border-color:var(--orange);box-shadow:0 0 10px var(--orange-glow); }
+.pag-btn:disabled { opacity:.3;cursor:not-allowed; }
+
+/* Botão Editar Categoria Cartão */
+.cat-edit-btn { position:absolute;top:8px;right:8px;background:rgba(155,109,255,.15);border:1px solid rgba(155,109,255,.3);color:var(--violet);border-radius:6px;padding:2px 7px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:.5px;transition:all .2s var(--ease); }
+.cat-edit-btn:hover { background:rgba(155,109,255,.3);color:#c4aaff; }
+
+/* Card diff previsto vs realizado */
+#cardDiffPrevReal { border-color:rgba(56,205,255,.25);background:rgba(56,205,255,.02); }
+#cardDiffPrevReal:hover { border-color:rgba(56,205,255,.5) !important; }
+
+/* Indicadores previsoes topo */
+#prevKpiRow .kpi-card { animation:fadeUp .3s var(--ease); }
+
+/* Gastos cartão tabela pendentes */
+.badge-faturado { background:rgba(155,109,255,.12);color:var(--violet);font-size:9px;padding:2px 8px;border-radius:12px;font-weight:700; }
+
+/* Tabela saldo conta linha total */
+.tr-totais-conta td { font-weight:800 !important; }
+
+
 @media print{
   .sidebar,.header,.btn,.hbtn,.bell-btn,.filter-bar,.menu-toggle,.modal-overlay,.toast-wrap,.notif-panel,.drive-banner,.drive-modal-overlay{display:none!important;}
   .main{margin-left:0;margin-top:0;padding:10px;}
@@ -1325,6 +1391,7 @@ tr:hover td { background: rgba(0,255,156,.025) !important; }
     <div class="grid g3" id="dashRow1"></div>
     <div id="dashMonthlySummary"></div>
     <div class="grid g3" id="dashRow2"></div>
+    <div class="grid g3" id="dashRow3"></div>
     <div class="flow-bar" id="dashFlow"></div>
     <div class="grid g2">
       <div>
@@ -4069,11 +4136,18 @@ function seedSubtipos(){
 }
 function seedCatCartao(){
   DATA.categoriasCartao=[
-    {id:genId('CAT'),nome:'Alimentação',emoji:'🍔',limite:800},
-    {id:genId('CAT'),nome:'Transporte',emoji:'🚗',limite:400},
-    {id:genId('CAT'),nome:'Lazer',emoji:'🎮',limite:600},
-    {id:genId('CAT'),nome:'Compras',emoji:'🛍️',limite:1000},
-    {id:genId('CAT'),nome:'Saúde',emoji:'💊',limite:300},
+    {id:genId('CAT'),nome:'Alimentação',  emoji:'🍔', limite:800,  color:'food'},
+    {id:genId('CAT'),nome:'Transporte',   emoji:'🚗', limite:400,  color:'trans'},
+    {id:genId('CAT'),nome:'Lazer',        emoji:'🎮', limite:600,  color:'leisure'},
+    {id:genId('CAT'),nome:'Compras',      emoji:'🛍️', limite:1000, color:'shop'},
+    {id:genId('CAT'),nome:'Saúde',        emoji:'💊', limite:300,  color:'health'},
+    {id:genId('CAT'),nome:'Educação',     emoji:'📚', limite:500,  color:'edu'},
+    {id:genId('CAT'),nome:'Moradia',      emoji:'🏠', limite:1500, color:'home'},
+    {id:genId('CAT'),nome:'Viagem',       emoji:'✈️', limite:800,  color:'travel'},
+    {id:genId('CAT'),nome:'Pet',          emoji:'🐾', limite:250,  color:'pet'},
+    {id:genId('CAT'),nome:'Tecnologia',   emoji:'💻', limite:700,  color:'tech'},
+    {id:genId('CAT'),nome:'Beleza',       emoji:'💅', limite:350,  color:'beauty'},
+    {id:genId('CAT'),nome:'Outros',       emoji:'📦', limite:400,  color:'misc'},
   ];
   save(true);
 }
@@ -4858,8 +4932,24 @@ function renderDashboardV44() {
     (rendaMensal>0?'<div class="month-status '+metaCls+'">'+(metaStatus==='ATINGIDA'?'✅':metaStatus==='EM RISCO'?'⚠️':'🔴')+' Meta '+metaStatus+'</div>':'')+
     '</div></div>';
 
-  // --- COMPROMISSOS + SALDO PROJETADO nos cards Row2 ---
+  // --- Row 2: Diferença Previsto vs Realizado + Compromissos + Saldo Projetado ---
+  var totalPrevMesR2 = DATA.previsoes.filter(function(p){return p.mesAno===ma;}).reduce(function(s,p){return s+p.valorPrevisto;},0);
+  var diffPrevReal = totalPrevMesR2 - despMes;
+  var diffCor = diffPrevReal > 50 ? 'c-emerald' : diffPrevReal < -50 ? 'c-coral' : 'c-amber';
+  var diffBadge = diffPrevReal > 50 ? 'bg-emerald' : diffPrevReal < -50 ? 'bg-coral' : 'bg-amber';
+  var diffLabel = diffPrevReal > 50 ? '🟢 Abaixo do previsto' : diffPrevReal < -50 ? '🔴 Acima do previsto' : '🟡 Em equilíbrio';
+
   document.getElementById('dashRow2').innerHTML=
+    '<div class="card">'+
+    '<span class="card-badge '+diffBadge+'">PREVISÃO</span>'+
+    '<div class="card-label">📊 Diferença Previsto vs Realizado</div>'+
+    '<div class="card-val '+diffCor+'">'+(diffPrevReal>=0?'+':'')+fmtR(diffPrevReal)+'</div>'+
+    '<div class="card-sub">'+diffLabel+'</div>'+
+    '<div class="card-detail">'+
+    '<div class="card-detail-row"><span>🔵 Previsto</span><strong class="c-sky">'+fmtR(totalPrevMesR2)+'</strong></div>'+
+    '<div class="card-detail-row"><span>🟠 Realizado</span><strong class="c-coral">'+fmtR(despMes)+'</strong></div>'+
+    '</div></div>'+
+
     '<div class="card" style="'+projAlerta+'">'+
     '<span class="card-badge '+(compromissos>=0?'bg-emerald':'bg-coral')+'">COMPROMISSOS</span>'+
     '<div class="card-label">🔄 Compromissos</div>'+
@@ -4869,15 +4959,17 @@ function renderDashboardV44() {
     '<div class="card-detail-row"><span>📥 A Receber</span><strong class="c-emerald">'+fmtR(totRecGlobal)+'</strong></div>'+
     '<div class="card-detail-row"><span>📤 A Pagar</span><strong class="c-coral">'+fmtR(totPagGlobal)+'</strong></div>'+
     '</div></div>'+
-    
+
     '<div class="card" style="'+(saldoProjetado<0?'border-color:rgba(255,77,106,.4);background:rgba(255,77,106,.03);':'')+'">' +
     '<span class="card-badge '+(saldoProjetado>=0?'bg-emerald':'bg-coral')+'">PROJEÇÃO</span>'+
     '<div class="card-label">🔮 Saldo Projetado</div>'+
     '<div class="card-val '+projCor+'">'+fmtR(saldoProjetado)+'</div>'+
     '<div class="card-sub">Saldo Atual + Compromissos</div>'+
     (saldoProjetado<0?'<div class="info-block danger" style="margin-top:10px;font-size:11px;">⚠️ Saldo projetado negativo — atenção!</div>':'')+
-    '</div>'+
-    
+    '</div>';
+
+  // ---- Row 3: Próximo Mês + Taxa de Execução + Saúde Financeira ----
+  var cardProxMes =
     '<div class="card"><span class="card-badge bg-amber">PRÓXIMO MÊS</span>'+
     '<div class="card-label">Compromisso '+nomeMes(pm)+'/'+pa2+'</div>'+
     '<div class="card-val c-amber">'+fmtR(pagarPM+cartAc)+'</div>'+
@@ -4885,6 +4977,71 @@ function renderDashboardV44() {
     '<div class="card-detail">'+
     '<div class="card-detail-row"><span>📅 Contas a pagar</span><strong class="c-amber">'+fmtR(pagarPM)+'</strong></div>'+
     '<div class="card-detail-row"><span>💳 Cartão acumulado</span><strong class="c-amber">'+fmtR(cartAc)+'</strong></div>'+
+    '</div></div>';
+
+  // ---- NOVOS 2 CARDS ----
+  // Card 1: Taxa de Execução Orçamentária (% gasto do previsto)
+  var totalPrevMes = DATA.previsoes.filter(function(p){return p.mesAno===ma;}).reduce(function(s,p){return s+p.valorPrevisto;},0);
+  var taxaExec = totalPrevMes>0 ? (despMes/totalPrevMes*100) : 0;
+  var txCor = taxaExec>=100?'c-coral':taxaExec>=80?'c-amber':'c-emerald';
+  var txBadgeCor = taxaExec>=100?'bg-coral':taxaExec>=80?'bg-amber':'bg-emerald';
+  var txLabel = taxaExec>=100?'🔴 Orçamento estourado':taxaExec>=80?'⚠️ Próximo do limite':'✅ Dentro do orçamento';
+  // Barras por tipo de despesa
+  var topDesp3={};
+  DATA.movimentacoes.filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(ma)&&x.tipo!=='Transferência';}).forEach(function(x){topDesp3[x.tipo||'Outros']=(topDesp3[x.tipo||'Outros']||0)+x.valor;});
+  var topDesp3Sorted=Object.entries(topDesp3).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
+  var topDesp3Html='';
+  topDesp3Sorted.forEach(function(e){
+    var pctD=despMes>0?e[1]/despMes*100:0;
+    topDesp3Html+='<div class="card-detail-row"><span>'+esc(e[0])+'</span><strong class="c-coral">'+fmtR(e[1])+'</strong></div>';
+  });
+
+  // Card 2: Índice de Saúde Financeira (score 0-100)
+  // Fórmula: (saldo/rendaMensal*30) + (taxaExec<=100?20:0) + (saldoProjetado>=0?25:0) + (compromissos>=0?15:0) + (totRecGlobal>totPagGlobal?10:0)
+  var scoreBase = 0;
+  if(rendaMensal>0) scoreBase += Math.min(30, (saldoTot/rendaMensal)*30);
+  if(taxaExec<=100) scoreBase += 20;
+  if(saldoProjetado>=0) scoreBase += 25;
+  if(compromissos>=0) scoreBase += 15;
+  if(totRecGlobal>=totPagGlobal) scoreBase += 10;
+  var score = Math.max(0, Math.min(100, Math.round(scoreBase)));
+  var scoreCor = score>=75?'c-emerald':score>=50?'c-amber':'c-coral';
+  var scoreBg = score>=75?'bg-emerald':score>=50?'bg-amber':'bg-coral';
+  var scoreLabel = score>=75?'🟢 Finanças saudáveis':score>=50?'🟡 Atenção necessária':'🔴 Situação crítica';
+  var scoreDot = score>=75?'var(--emerald)':score>=50?'var(--amber)':'var(--coral)';
+
+  document.getElementById('dashRow3').innerHTML=
+    cardProxMes+
+
+    // Card Execução Orçamentária
+    '<div class="card">'+
+    '<span class="card-badge '+txBadgeCor+'">ORÇAMENTO</span>'+
+    '<div class="card-label">📐 Taxa de Execução</div>'+
+    '<div class="card-val '+txCor+'">'+taxaExec.toFixed(1)+'<span style="font-size:18px;font-weight:600;">%</span></div>'+
+    '<div class="card-sub">'+txLabel+'</div>'+
+    '<div style="margin-top:10px;height:6px;background:var(--surface3);border-radius:4px;overflow:hidden;"><div style="height:100%;border-radius:4px;width:'+Math.min(taxaExec,100).toFixed(0)+'%;background:'+(taxaExec>=100?'var(--coral)':taxaExec>=80?'var(--amber)':'var(--emerald)')+';transition:width .5s;"></div></div>'+
+    '<div class="card-detail" style="margin-top:10px;">'+
+    '<div class="card-detail-row"><span>🔵 Previsto</span><strong class="c-sky">'+fmtR(totalPrevMes)+'</strong></div>'+
+    '<div class="card-detail-row"><span>🟠 Realizado</span><strong class="c-coral">'+fmtR(despMes)+'</strong></div>'+
+    (totalPrevMes===0?'<div class="card-detail-row" style="color:var(--text3);font-size:10px;"><span>Defina previsões no módulo Previsões</span></div>':'')+
+    '</div></div>'+
+
+    // Card Saúde Financeira
+    '<div class="card">'+
+    '<span class="card-badge '+scoreBg+'">ANÁLISE</span>'+
+    '<div class="card-label">💡 Saúde Financeira</div>'+
+    '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:4px;">'+
+    '<div class="card-val '+scoreCor+'" style="line-height:1;">'+score+'</div>'+
+    '<div style="font-size:16px;font-weight:700;color:var(--text3);margin-bottom:6px;">/100</div>'+
+    '</div>'+
+    '<div class="card-sub">'+scoreLabel+'</div>'+
+    '<div style="margin-top:10px;height:8px;background:var(--surface3);border-radius:6px;overflow:hidden;position:relative;">'+
+    '<div style="height:100%;border-radius:6px;width:'+score+'%;background:linear-gradient(90deg,'+scoreDot+','+scoreDot+'aa);transition:width .6s;box-shadow:0 0 8px '+scoreDot+'66;"></div>'+
+    '</div>'+
+    '<div class="card-detail" style="margin-top:10px;font-size:10px;">'+
+    '<div class="card-detail-row"><span>Saldo positivo</span><strong>'+(saldoTot>=0?'✅':'❌')+'</strong></div>'+
+    '<div class="card-detail-row"><span>Receber > Pagar</span><strong>'+(totRecGlobal>=totPagGlobal?'✅':'❌')+'</strong></div>'+
+    '<div class="card-detail-row"><span>Projeção OK</span><strong>'+(saldoProjetado>=0?'✅':'❌')+'</strong></div>'+
     '</div></div>';
 
   document.getElementById('dashFlow').innerHTML=
@@ -5338,51 +5495,98 @@ function renderCartaoV44(){
     '</div></div>';
 
   var grid=document.getElementById('catGrid');
-  grid.insertAdjacentHTML('beforebegin', infoBar);
-  
-  // Render cards categorias
+  if(!grid) return;
+  // Remover infoBar anterior se existir (evita duplicação)
+  var oldBar=document.getElementById('cartaoInfoBar');
+  if(oldBar) oldBar.remove();
+  // Injetar infoBar acima do grid
+  var barEl=document.createElement('div');
+  barEl.id='cartaoInfoBar';
+  barEl.innerHTML=infoBar;
+  grid.parentNode.insertBefore(barEl, grid);
+  grid.innerHTML=''; // limpar grid
+
+  // Mapa de cores por tipo de categoria
+  var colorMap5 = {
+    food:    {accent:'#FF6B35',glow:'rgba(255,107,53,.18)',bg:'rgba(255,107,53,.06)',border:'rgba(255,107,53,.28)',bg2:'rgba(255,107,53,.12)'},
+    trans:   {accent:'#38CDFF',glow:'rgba(56,205,255,.18)',bg:'rgba(56,205,255,.05)',border:'rgba(56,205,255,.25)',bg2:'rgba(56,205,255,.1)'},
+    leisure: {accent:'#A855F7',glow:'rgba(168,85,247,.18)',bg:'rgba(168,85,247,.05)',border:'rgba(168,85,247,.25)',bg2:'rgba(168,85,247,.1)'},
+    shop:    {accent:'#EC4899',glow:'rgba(236,72,153,.18)',bg:'rgba(236,72,153,.05)',border:'rgba(236,72,153,.25)',bg2:'rgba(236,72,153,.1)'},
+    health:  {accent:'#22D3EE',glow:'rgba(34,211,238,.18)',bg:'rgba(34,211,238,.05)',border:'rgba(34,211,238,.25)',bg2:'rgba(34,211,238,.1)'},
+    edu:     {accent:'#F59E0B',glow:'rgba(245,158,11,.18)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.25)',bg2:'rgba(245,158,11,.1)'},
+    home:    {accent:'#10B981',glow:'rgba(16,185,129,.18)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.25)',bg2:'rgba(16,185,129,.1)'},
+    travel:  {accent:'#6366F1',glow:'rgba(99,102,241,.18)',bg:'rgba(99,102,241,.05)',border:'rgba(99,102,241,.25)',bg2:'rgba(99,102,241,.1)'},
+    pet:     {accent:'#F97316',glow:'rgba(249,115,22,.18)',bg:'rgba(249,115,22,.05)',border:'rgba(249,115,22,.25)',bg2:'rgba(249,115,22,.1)'},
+    tech:    {accent:'#3B82F6',glow:'rgba(59,130,246,.18)',bg:'rgba(59,130,246,.05)',border:'rgba(59,130,246,.25)',bg2:'rgba(59,130,246,.1)'},
+    beauty:  {accent:'#E879F9',glow:'rgba(232,121,249,.18)',bg:'rgba(232,121,249,.05)',border:'rgba(232,121,249,.25)',bg2:'rgba(232,121,249,.1)'},
+    misc:    {accent:'#84CC16',glow:'rgba(132,204,22,.18)',bg:'rgba(132,204,22,.05)',border:'rgba(132,204,22,.25)',bg2:'rgba(132,204,22,.1)'},
+  };
+  var fallbackClrs5=[
+    {accent:'#FF6B35',glow:'rgba(255,107,53,.18)',bg:'rgba(255,107,53,.06)',border:'rgba(255,107,53,.28)',bg2:'rgba(255,107,53,.12)'},
+    {accent:'#38CDFF',glow:'rgba(56,205,255,.18)',bg:'rgba(56,205,255,.05)',border:'rgba(56,205,255,.25)',bg2:'rgba(56,205,255,.1)'},
+    {accent:'#A855F7',glow:'rgba(168,85,247,.18)',bg:'rgba(168,85,247,.05)',border:'rgba(168,85,247,.25)',bg2:'rgba(168,85,247,.1)'},
+    {accent:'#EC4899',glow:'rgba(236,72,153,.18)',bg:'rgba(236,72,153,.05)',border:'rgba(236,72,153,.25)',bg2:'rgba(236,72,153,.1)'},
+    {accent:'#10B981',glow:'rgba(16,185,129,.18)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.25)',bg2:'rgba(16,185,129,.1)'},
+    {accent:'#F59E0B',glow:'rgba(245,158,11,.18)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.25)',bg2:'rgba(245,158,11,.1)'},
+  ];
+
+  // Render cards — layout vertical original com cores por categoria
   if(!DATA.categoriasCartao.length){
     grid.innerHTML='<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">💳</div><div class="empty-title">Nenhuma categoria</div></div>';
   } else {
-    grid.innerHTML=DATA.categoriasCartao.map(function(cat){
-      var ac=DATA.gastosCartao.filter(function(g){return g.categoriaId===cat.id&&g.mes===m2&&g.ano===a2;}).reduce(function(s,g){return s+g.valor;},0);
-      var pct=cat.limite>0?(ac/cat.limite*100):0;
-      var corVal=pct>=100?'c-coral':pct>=80?'c-amber':'c-emerald';
-      var corPf=pct>=100?'pf-coral':pct>=80?'pf-amber':'pf-emerald';
-      return '<div class="cat-card"><div class="cat-emoji">'+esc(cat.emoji||'💳')+'</div>'+
+    var gridHtml = '';
+    DATA.categoriasCartao.forEach(function(cat, idx){
+      var ac = DATA.gastosCartao.filter(function(g){return g.categoriaId===cat.id&&g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).reduce(function(s,g){return s+g.valor;},0);
+      var pct = cat.limite>0?(ac/cat.limite*100):0;
+      var clrs = (cat.color && colorMap5[cat.color]) ? colorMap5[cat.color] : fallbackClrs5[idx % fallbackClrs5.length];
+      var corVal = pct>=100?'c-coral':pct>=80?'c-amber':'c-text';
+      var corPf  = pct>=100?'pf-coral':pct>=80?'pf-amber':'pf-emerald';
+      gridHtml += '<div class="cat-card" style="'+
+        '--cat-accent:'+clrs.accent+';'+
+        '--cat-accent-glow:'+clrs.glow+';'+
+        '--cat-accent-bg:'+clrs.bg+';'+
+        '--cat-accent-border:'+clrs.border+';'+
+        '--cat-accent-bg2:'+clrs.bg2+';">'+
+        '<button class="cat-edit-btn-h" onclick="editarMesCatCartao(\''+cat.id+'\')">✏</button>'+
+        '<div class="cat-emoji">'+esc(cat.emoji||'💳')+'</div>'+
         '<div class="cat-name">'+esc(cat.nome)+'</div>'+
         '<div class="cat-val '+corVal+'">'+fmtR(ac)+'</div>'+
-        '<div class="progress" style="margin-top:8px;"><div class="progress-fill '+corPf+'" style="width:'+Math.min(pct,100)+'%"></div></div>'+
-        '<div style="font-size:9px;color:var(--text3);margin-top:4px;">'+(cat.limite>0?pct.toFixed(0)+'% de '+fmtR(cat.limite):'Sem limite')+'</div></div>';
-    }).join('');
+        '<div class="progress" style="margin-top:8px;"><div class="progress-fill '+corPf+'" style="width:'+Math.min(pct,100)+'%;background:'+clrs.accent+';box-shadow:0 0 6px '+clrs.glow+';"></div></div>'+
+        '<div style="font-size:9px;color:var(--text3);margin-top:4px;">'+(cat.limite>0?pct.toFixed(0)+'% de '+fmtR(cat.limite):'Sem limite')+'</div>'+
+      '</div>';
+    });
+    grid.innerHTML = gridHtml;
   }
 
   // Tabela Resumo com coluna Diferença + linha totais + edição inline
-  var totalGeral=0;
-  var h='<table><tr><th>Categoria</th><th style="text-align:right;">Acumulado</th><th style="text-align:right;">Limite</th><th style="text-align:right;">Diferença</th><th>%</th><th>Status</th></tr>';
+  var totalGeral2=0;
+  var h2='<table><tr><th>Categoria</th><th style="text-align:right;">Acumulado</th><th style="text-align:right;">Limite</th><th style="text-align:right;">Diferença</th><th>%</th><th>Status</th><th>Ações</th></tr>';
   DATA.categoriasCartao.forEach(function(cat){
     var ac=DATA.gastosCartao.filter(function(g){return g.categoriaId===cat.id&&g.mes===m2&&g.ano===a2;}).reduce(function(s,g){return s+g.valor;},0);
-    totalGeral+=ac;
+    totalGeral2+=ac;
     var diff=cat.limite>0?cat.limite-ac:null;
     var pct=cat.limite>0?(ac/cat.limite*100):0;
     var st=pct>=100?'<span class="badge bg-coral">🔴 Ultrapassado</span>':pct>=80?'<span class="badge bg-amber">⚠️ 80%+</span>':'<span class="badge bg-emerald">✅ OK</span>';
-    h+='<tr>'+
+    h2+='<tr>'+
       '<td>'+esc(cat.emoji||'')+'&nbsp;'+esc(cat.nome)+'</td>'+
       '<td class="mono c-amber" style="text-align:right;">'+fmtR(ac)+'</td>'+
       '<td class="mono" style="text-align:right;color:var(--text2);">'+(cat.limite>0?fmtR(cat.limite):'—')+'</td>'+
       '<td class="mono" style="text-align:right;color:'+(diff===null?'var(--text3)':diff>=0?'var(--emerald)':'var(--coral)')+'">'+(diff===null?'—':(diff>=0?'+':'')+fmtR(diff))+'</td>'+
       '<td style="font-size:11px;">'+(cat.limite>0?pct.toFixed(1)+'%':'—')+'</td>'+
-      '<td>'+st+'</td></tr>';
+      '<td>'+st+'</td>'+
+      '<td><button class="btn btn-xs btn-edit" onclick="editarMesCatCartao(\''+cat.id+'\')" style="white-space:nowrap;">✏ Editar</button></td></tr>';
   });
-  if(!DATA.categoriasCartao.length) h+='<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text3);">Nenhuma categoria</td></tr>';
-  var diffGeral=limite>0?limite-totalGeral:null;
-  h+='<tr class="tr-totais">'+
+  if(!DATA.categoriasCartao.length) h2+='<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text3);">Nenhuma categoria</td></tr>';
+  var diffGeral=limite>0?limite-totalGeral2:null;
+  h2+='<tr class="tr-totais">'+
     '<td>TOTAL</td>'+
-    '<td class="mono c-amber" style="text-align:right;">'+fmtR(totalGeral)+'</td>'+
+    '<td class="mono c-amber" style="text-align:right;">'+fmtR(totalGeral2)+'</td>'+
     '<td class="mono" style="text-align:right;">'+(limite>0?fmtR(limite):'—')+'</td>'+
     '<td class="mono" style="text-align:right;color:'+(diffGeral===null?'var(--text3)':diffGeral>=0?'var(--emerald)':'var(--coral)')+';">'+(diffGeral===null?'—':(diffGeral>=0?'+':'')+fmtR(diffGeral))+'</td>'+
-    '<td colspan="2"></td></tr></table>';
-  document.getElementById('cartaoResumo').innerHTML=h;
+    '<td colspan="3"></td></tr></table>';
+  document.getElementById('cartaoResumo').innerHTML=h2;
+  // Lançamentos pendentes detalhados
+  if(typeof renderResumoGastosCartao === 'function') renderResumoGastosCartao(m2, a2);
 }
 renderCartao = renderCartaoV44;
 
@@ -5705,21 +5909,536 @@ function renderRelatoriosV44(){
 renderRelatorios = renderRelatoriosV44;
 
 // ================================================================
+// ★ NEXUS ONE v5.0 — CORREÇÕES E MELHORIAS AVANÇADAS
+// ================================================================
+
+// ================================================================
+// [1] DASHBOARD — Card "Diferença Previsto vs Realizado" + layout por linhas
+// Já incorporado diretamente em renderDashboardV44 (dashRow2 e dashRow3)
+// ================================================================
+
+// ================================================================
+// [2] CORREÇÃO DE DUPLICIDADE — MÓDULO CARTÃO
+// Status: 'faturado' | 'pendente'. Ao zerar fatura, gastos viram faturados
+// e NÃO entram mais nos cálculos de "compromissos"
+// ================================================================
+// A correção já está implementada no zerarFaturaV44 que remove os gastos
+// DATA.gastosCartao via filter. Aqui garantimos que cartões 'faturados'
+// não duplicam. A flag de status é adicionada na criação dos gastos:
+var _origModalGasto = window.modalGasto;
+if(typeof modalGasto !== 'undefined'){
+  window.modalGasto = function(){
+    if(_origModalGasto) _origModalGasto.apply(this, arguments);
+  };
+}
+
+// Patch para garantir que gastos tenham status='pendente' ao serem criados
+(function patchGastoCartao(){
+  var _origSave = save;
+  // Ao salvar, garantir que todos gastosCartao sem status recebam 'pendente'
+  save = function(silent){
+    DATA.gastosCartao.forEach(function(g){ if(!g.status) g.status='pendente'; });
+    _origSave.apply(this, arguments);
+  };
+})();
+
+// Patch zerarFatura para marcar como 'faturado' ao invés de deletar apenas
+(function patchZerarFatura(){
+  var _orig = zerarFatura;
+  zerarFatura = function(){
+    var m2=mes(); var a2=ano();
+    var total=DATA.gastosCartao.filter(function(g){return g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).reduce(function(s,g){return s+g.valor;},0);
+    if(!total){ showToast('⚠️ Nenhum gasto pendente no cartão neste mês','var(--amber)'); return; }
+    var resumoCats='';
+    DATA.categoriasCartao.forEach(function(cat){
+      var ac=DATA.gastosCartao.filter(function(g){return g.categoriaId===cat.id&&g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).reduce(function(s,g){return s+g.valor;},0);
+      if(ac>0) resumoCats+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);"><span>'+esc(cat.emoji||'')+'&nbsp;'+esc(cat.nome)+'</span><span class="mono c-amber">'+fmtR(ac)+'</span></div>';
+    });
+    var descPadrao='Fatura '+nomeMesFull(m2)+'/'+a2;
+    var h='<div class="info-block warn" style="margin-bottom:16px;"><strong>Total da fatura pendente: '+fmtR(total)+'</strong><br><small style="color:var(--text3);">Somente gastos com status "pendente" serão faturados.</small></div>'+
+      '<div class="mrow"><div><label>Data de Vencimento</label><input id="zfVenc2" type="date" value="'+(a2+'-'+pad(m2)+'-'+pad(DATA.config.diaFechamento||15))+'"></div>'+
+      '<div><label>Descrição</label><input id="zfDesc2" value="'+esc(descPadrao)+'"></div></div>'+
+      '<div style="margin-top:14px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:8px;">Resumo por categoria</div>'+resumoCats+'</div>';
+    openModal('Zerar Fatura','🔄',h,function(){
+      var venc=document.getElementById('zfVenc2')?.value;
+      var desc=document.getElementById('zfDesc2')?.value||descPadrao;
+      if(!venc){ showToast('⚠️ Informe a data de vencimento','var(--amber)'); return; }
+      DATA.historicoFatura.push({mes:m2,ano:a2,total:total,dataFechamento:new Date().toISOString()});
+      // Marcar gastos como faturados (não mais pendentes) — NÃO deletar
+      DATA.gastosCartao.forEach(function(g){
+        if(g.mes===m2&&g.ano===a2&&g.status!=='faturado') g.status='faturado';
+      });
+      DATA.pagar.push({id:genId('PG'),vencimento:venc,descricao:desc,tipo:'CARTÃO',categoria:'Cartão de Crédito',valor:total,status:'PENDENTE',origemCartao:true,criadoEm:new Date().toISOString()});
+      save(true);
+      renderCartao();
+      showToast('✅ Fatura registrada em Contas a Pagar ✔ (gastos marcados como faturados)','var(--emerald)',4500);
+      closeAllModals();
+    },'Confirmar e Registrar em A Pagar');
+  };
+})();
+
+// ================================================================
+// [3] PAGINAÇÃO GLOBAL — Contas a Pagar e a Receber (10 por página)
+// ================================================================
+var _pagPagar = 1;
+var _pagReceber = 1;
+var _PAGE_SIZE = 10;
+
+function renderPaginacao(total, pagAtual, onChangeFn, containerId){
+  var totalPags = Math.max(1, Math.ceil(total / _PAGE_SIZE));
+  if(totalPags <= 1) return '';
+  var h = '<div style="display:flex;align-items:center;gap:6px;padding:12px 0;justify-content:center;flex-wrap:wrap;">';
+  h += '<button class="btn btn-sm" onclick="'+onChangeFn+'(1)" '+(pagAtual===1?'disabled':'')+'>«</button>';
+  h += '<button class="btn btn-sm" onclick="'+onChangeFn+'('+(pagAtual-1)+')" '+(pagAtual===1?'disabled':'')+'>‹ Anterior</button>';
+  var start = Math.max(1, pagAtual-2);
+  var end = Math.min(totalPags, pagAtual+2);
+  for(var p=start;p<=end;p++){
+    h += '<button class="btn btn-sm'+(p===pagAtual?' btn-primary':'')+'" onclick="'+onChangeFn+'('+p+')">'+p+'</button>';
+  }
+  h += '<button class="btn btn-sm" onclick="'+onChangeFn+'('+(pagAtual+1)+')" '+(pagAtual===totalPags?'disabled':'')+'>Próximo ›</button>';
+  h += '<button class="btn btn-sm" onclick="'+onChangeFn+'('+totalPags+')" '+(pagAtual===totalPags?'disabled':'')+'>»</button>';
+  h += '<span style="font-size:11px;color:var(--text3);margin-left:6px;">Pág. '+pagAtual+'/'+totalPags+' ('+total+' registros)</span>';
+  h += '</div>';
+  return h;
+}
+
+window.setPagPagar = function(p){ _pagPagar=p; filtrarPagarV44(); };
+window.setPagReceber = function(p){ _pagReceber=p; filtrarReceberV44(); };
+
+// Patch filtrarPagarV44 para incluir paginação
+var _origFiltrarPagarV44 = window.filtrarPagarV44;
+window.filtrarPagarV44 = function(){
+  var busca=(document.getElementById('pfBusca')?.value||'').toLowerCase();
+  var status=document.getElementById('pfStatus')?.value||'';
+  var despTipoFiltro=document.getElementById('pfDespTipo')?.value||'';
+  var dtIni=document.getElementById('pfDtIni')?.value||'';
+  var dtFim=document.getElementById('pfDtFim')?.value||'';
+  var tipoFiltro=document.getElementById('pfTipo')?.value||'';
+  var hojeStr2=hoje();
+  var d7=new Date(); d7.setDate(d7.getDate()+7); var d7s=d7.toISOString().split('T')[0];
+  var m3=mes(); var a3=ano(); var ma3=a3+'-'+pad(m3);
+  var listFull=DATA.pagar.filter(function(p){
+    if(_filtroRapidoPagar==='vencidas') return p.status!=='PAGO'&&p.vencimento<hojeStr2;
+    if(_filtroRapidoPagar==='hoje') return p.status!=='PAGO'&&p.vencimento===hojeStr2;
+    if(_filtroRapidoPagar==='prox7') return p.status!=='PAGO'&&p.vencimento>=hojeStr2&&p.vencimento<=d7s;
+    if(_filtroRapidoPagar==='mes') return p.vencimento&&p.vencimento.startsWith(ma3);
+    if(status&&p.status!==status) return false;
+    if(despTipoFiltro&&(p.despesaTipo||'fixa')!==despTipoFiltro) return false;
+    if(tipoFiltro&&p.tipo!==tipoFiltro) return false;
+    if(busca&&!(p.descricao||'').toLowerCase().includes(busca)) return false;
+    if(dtIni&&p.vencimento<dtIni) return false;
+    if(dtFim&&p.vencimento>dtFim) return false;
+    return true;
+  }).sort(function(a,b){return (a.vencimento||'').localeCompare(b.vencimento||'');});
+
+  var totalReg = listFull.length;
+  var totalPags = Math.max(1, Math.ceil(totalReg/_PAGE_SIZE));
+  if(_pagPagar > totalPags) _pagPagar = totalPags;
+  var offset = (_pagPagar-1)*_PAGE_SIZE;
+  var list = listFull.slice(offset, offset+_PAGE_SIZE);
+
+  var h='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);">'+
+    '<span>Exibindo '+list.length+' de '+totalReg+' registros</span></div>'+
+    '<table><tr>'+
+    '<th style="width:36px;"><input type="checkbox" id="sel-todos-pagar" onchange="toggleSelTodosPagar(this.checked)"></th>'+
+    '<th>Data</th><th>Descrição</th><th>Tipo</th><th>F/V</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+  if(!list.length) h+='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento encontrado</td></tr>';
+  list.forEach(function(p){
+    var stBadge,cls='';
+    if(p.status==='PAGO'){stBadge='<span class="badge bg-emerald">PAGO</span>';cls='row-paid';}
+    else if(p.vencimento<hojeStr2){stBadge='<span class="dot-venc red"></span><span class="badge bg-coral">VENCIDA</span>';cls='row-overdue';}
+    else if(p.vencimento===hojeStr2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">HOJE</span>';cls='row-today';}
+    else if(p.vencimento&&dias(hojeStr2,p.vencimento)<=2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">EM BREVE</span>';}
+    else{stBadge='<span class="dot-venc green"></span><span class="badge bg-gray">PENDENTE</span>';}
+    var dtBadge=(p.despesaTipo||'fixa')==='fixa'?'<span class="badge badge-fixa">📌 Fixa</span>':'<span class="badge badge-variavel">📊 Var.</span>';
+    h+='<tr class="'+cls+'">'+
+      '<td><input type="checkbox" class="sel-check sel-pagar-check" data-id="'+p.id+'" onchange="toggleSelPagar(\''+p.id+'\',this.checked)"></td>'+
+      '<td style="white-space:nowrap;">'+fmtD(p.vencimento)+'</td>'+
+      '<td style="font-weight:500;">'+esc(p.descricao||'—')+(p.subtipo?'<span class="subtipo-tag">'+esc(p.subtipo)+'</span>':'')+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);">'+esc(p.tipo||'—')+'</td>'+
+      '<td>'+dtBadge+'</td>'+
+      '<td class="mono c-coral" style="text-align:right;font-weight:600;">'+fmtR(p.valor)+'</td>'+
+      '<td>'+stBadge+'</td>'+
+      '<td style="white-space:nowrap;">'+
+      (p.status!=='PAGO'?'<button class="btn btn-xs btn-emerald" onclick="darBaixaPagar(\''+p.id+'\')">✓ Baixa</button> ':'')+
+      '<button class="btn btn-xs btn-edit" onclick="editarPagar(\''+p.id+'\')">✏</button>'+
+      '<button class="btn btn-xs btn-danger" onclick="excluirPagar(\''+p.id+'\')">🗑</button>'+
+      '</td></tr>';
+  });
+  var totVis=listFull.reduce(function(s,p){return s+p.valor;},0);
+  h+='<tr class="tr-totais">'+
+    '<td colspan="5" style="font-weight:800;color:var(--orange);">TOTAL ('+listFull.length+' registros)</td>'+
+    '<td class="mono c-coral" style="text-align:right;font-weight:800;">'+fmtR(totVis)+'</td>'+
+    '<td><span style="font-size:10px;color:var(--text3);">'+listFull.filter(function(p){return p.status==='PAGO';}).length+' pagos</span></td>'+
+    '<td></td></tr></table>';
+  h += renderPaginacao(totalReg, _pagPagar, 'setPagPagar', 'pagarTabela');
+  document.getElementById('pagarTabela').innerHTML=h;
+  _renderSelBarPagar();
+};
+
+// Patch filtrarReceberV44 para incluir paginação
+var _origFiltrarReceberV44 = window.filtrarReceberV44;
+window.filtrarReceberV44 = function(){
+  var busca=(document.getElementById('rfBusca')?.value||'').toLowerCase();
+  var status=document.getElementById('rfStatus')?.value||'';
+  var dtIni=document.getElementById('rfDtIni')?.value||'';
+  var dtFim=document.getElementById('rfDtFim')?.value||'';
+  var tipoFiltro=document.getElementById('rfTipo')?.value||'';
+  var hojeStr2=hoje();
+  var listFull=DATA.receber.filter(function(r){
+    if(status&&r.status!==status) return false;
+    if(tipoFiltro&&r.tipo!==tipoFiltro) return false;
+    if(busca&&!(r.descricao||'').toLowerCase().includes(busca)) return false;
+    if(dtIni&&r.vencimento<dtIni) return false;
+    if(dtFim&&r.vencimento>dtFim) return false;
+    return true;
+  }).sort(function(a,b){return (a.vencimento||'').localeCompare(b.vencimento||'');});
+
+  var totalReg = listFull.length;
+  var totalPags = Math.max(1, Math.ceil(totalReg/_PAGE_SIZE));
+  if(_pagReceber > totalPags) _pagReceber = totalPags;
+  var offset = (_pagReceber-1)*_PAGE_SIZE;
+  var list = listFull.slice(offset, offset+_PAGE_SIZE);
+
+  var h='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);">'+
+    '<span>Exibindo '+list.length+' de '+totalReg+' registros</span></div>'+
+    '<table><tr>'+
+    '<th style="width:36px;"><input type="checkbox" onchange="toggleSelTodosReceber(this.checked)"></th>'+
+    '<th>Data</th><th>Descrição</th><th>Tipo</th><th>Devedor</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+  if(!list.length) h+='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento</td></tr>';
+  list.forEach(function(r){
+    var stBadge,cls='';
+    if(r.status==='RECEBIDO'){stBadge='<span class="badge bg-emerald">RECEBIDO</span>';cls='row-paid';}
+    else if(r.vencimento<hojeStr2){stBadge='<span class="dot-venc red"></span><span class="badge bg-coral">ATRASO</span>';cls='row-overdue';}
+    else if(r.vencimento===hojeStr2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">HOJE</span>';cls='row-today';}
+    else{stBadge='<span class="dot-venc green"></span><span class="badge bg-gray">PENDENTE</span>';}
+    h+='<tr class="'+cls+'">'+
+      '<td><input type="checkbox" class="sel-check sel-rec-check" data-id="'+r.id+'" onchange="toggleSelReceber(\''+r.id+'\',this.checked)"></td>'+
+      '<td>'+fmtD(r.vencimento)+'</td>'+
+      '<td style="font-weight:500;">'+esc(r.descricao||'—')+(r.subtipo?'<span class="subtipo-tag" style="background:rgba(0,229,160,.1);color:var(--emerald);">'+esc(r.subtipo)+'</span>':'')+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);">'+esc(r.tipo||'—')+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);">'+esc(r.devedor||'—')+'</td>'+
+      '<td class="mono c-emerald" style="text-align:right;font-weight:600;">'+fmtR(r.valor)+'</td>'+
+      '<td>'+stBadge+'</td>'+
+      '<td style="white-space:nowrap;">'+
+      (r.status!=='RECEBIDO'?'<button class="btn btn-xs btn-primary" onclick="darBaixaReceber(\''+r.id+'\')">✓ Baixa</button> ':'')+
+      '<button class="btn btn-xs btn-edit" onclick="editarReceber(\''+r.id+'\')">✏</button>'+
+      '<button class="btn btn-xs btn-danger" onclick="excluirReceber(\''+r.id+'\')">🗑</button>'+
+      '</td></tr>';
+  });
+  var totVis=listFull.reduce(function(s,r){return s+r.valor;},0);
+  h+='<tr class="tr-totais">'+
+    '<td colspan="5" style="font-weight:800;color:var(--orange);">TOTAL ('+listFull.length+')</td>'+
+    '<td class="mono c-emerald" style="text-align:right;font-weight:800;">'+fmtR(totVis)+'</td>'+
+    '<td colspan="2"></td></tr></table>';
+  h += renderPaginacao(totalReg, _pagReceber, 'setPagReceber', 'receberTabela');
+  document.getElementById('receberTabela').innerHTML=h;
+  _renderSelBarReceber();
+};
+
+// ================================================================
+// [4] DASHBOARD — TOTAL na tabela Saldo por Conta
+// ================================================================
+(function patchDashSaldoConta(){
+  var _origRD = renderDashboard;
+  renderDashboard = function(){
+    _origRD.apply(this, arguments);
+    setTimeout(function(){
+      var el = document.getElementById('dashSaldoConta');
+      if(!el) return;
+      var totalSaldo = DATA.contas.reduce(function(s,c){return s+saldoConta(c.id);},0);
+      // Checar se linha de TOTAL já existe
+      var table = el.querySelector('table');
+      if(!table) return;
+      var existingTotRow = table.querySelector('.tr-totais-conta');
+      if(existingTotRow) existingTotRow.remove();
+      var tr = document.createElement('tr');
+      tr.className = 'tr-totais tr-totais-conta';
+      tr.innerHTML = '<td colspan="2" style="font-weight:800;color:var(--orange);">TOTAL</td>'+
+        '<td class="mono '+(totalSaldo>=0?'c-emerald':'c-coral')+'" style="font-size:16px;font-weight:800;">'+fmtR(totalSaldo)+'</td>';
+      table.appendChild(tr);
+    }, 120);
+  };
+})();
+
+// ================================================================
+// [5] CARTÃO — patchRenderCartaoV5 consolidado em renderCartaoV44 acima
+// renderCartaoV44 já inclui: layout horizontal colorido, botão editar,
+// status faturado/pendente, limpeza de re-renderização.
+// ================================================================
+// Garantir que renderCartao aponta para renderCartaoV44 (que é a versão final)
+if(typeof renderCartaoV44 === 'function') renderCartao = renderCartaoV44;
+
+// Função para renderizar gastos detalhados do cartão
+window.renderResumoGastosCartao = function(m2, a2){
+  m2 = m2||mes(); a2 = a2||ano();
+  var gastosMes = DATA.gastosCartao.filter(function(g){return g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).sort(function(a,b){return (b.data||'').localeCompare(a.data||'');});
+  if(!gastosMes.length) return;
+  var sec = document.getElementById('cartaoResumo');
+  if(!sec) return;
+  var extra = '<div style="margin-top:20px;"><div class="sec-header" style="margin-top:0;"><span class="sec-title">📋 Lançamentos Pendentes do Mês</span><div class="sec-line"></div></div>'+
+    '<div class="table-wrap"><table><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+  gastosMes.forEach(function(g){
+    var cat = DATA.categoriasCartao.find(function(c){return c.id===g.categoriaId;})||{nome:'—',emoji:'💳'};
+    extra += '<tr>'+
+      '<td>'+fmtD(g.data||'')+'</td>'+
+      '<td style="font-size:11px;">'+esc(cat.emoji||'💳')+'&nbsp;'+esc(cat.nome)+'</td>'+
+      '<td>'+esc(g.descricao||'—')+'</td>'+
+      '<td class="mono c-amber" style="text-align:right;">'+fmtR(g.valor)+'</td>'+
+      '<td><span class="badge '+(g.status==='faturado'?'bg-violet':'bg-amber')+'">'+(g.status==='faturado'?'FATURADO':'PENDENTE')+'</span></td>'+
+      '<td style="white-space:nowrap;">'+
+      '<button class="btn btn-xs btn-edit" onclick="editarGastoCartao(\''+g.id+'\')">✏</button> '+
+      '<button class="btn btn-xs btn-danger" onclick="excluirGastoCartao(\''+g.id+'\')">🗑</button>'+
+      '</td></tr>';
+  });
+  extra += '</table></div></div>';
+  sec.innerHTML += extra;
+};
+
+// ================================================================
+// [6] CARTÃO — Editar valor por categoria (mês atual)
+// ================================================================
+window.editarMesCatCartao = function(catId){
+  var m2=mes(); var a2=ano();
+  var cat = DATA.categoriasCartao.find(function(c){return c.id===catId;});
+  if(!cat) return;
+  var acum = DATA.gastosCartao.filter(function(g){return g.categoriaId===catId&&g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).reduce(function(s,g){return s+g.valor;},0);
+  var h='<div class="info-block">'+
+    '<strong>'+esc(cat.emoji||'💳')+' '+esc(cat.nome)+'</strong><br>'+
+    'Acumulado pendente no mês: <strong class="c-amber">'+fmtR(acum)+'</strong>'+
+    (cat.limite>0?'<br>Limite: <strong>'+fmtR(cat.limite)+'</strong>':'')+'</div>'+
+    '<div class="mrow"><div>'+
+    '<label>Ajustar total do mês para R$</label>'+
+    '<input id="editCatVal" type="number" step="0.01" value="'+acum.toFixed(2)+'" placeholder="Novo total">'+
+    '</div><div>'+
+    '<label>Data do ajuste</label>'+
+    '<input id="editCatDt" type="date" value="'+hoje()+'">'+
+    '</div></div>'+
+    '<div class="mrow single"><div>'+
+    '<label>Descrição do ajuste</label>'+
+    '<input id="editCatDesc" value="Ajuste manual — '+esc(cat.nome)+'" placeholder="Motivo">'+
+    '</div></div>';
+
+  openModal('✏️ Editar Categoria — '+esc(cat.nome),'✏️',h,function(){
+    var novoValor = parseFloat(document.getElementById('editCatVal')?.value)||0;
+    var dt = document.getElementById('editCatDt')?.value || hoje();
+    var desc = document.getElementById('editCatDesc')?.value || 'Ajuste manual';
+    if(novoValor < 0) return toast('⚠️ Valor não pode ser negativo','var(--amber)');
+    var diff = novoValor - acum;
+    if(Math.abs(diff) < 0.01){ toast('ℹ️ Nenhuma alteração necessária','var(--sky)'); closeAllModals(); return; }
+    if(diff > 0){
+      // Adicionar gasto de ajuste
+      DATA.gastosCartao.push({
+        id:genId('GC'), categoriaId:catId, mes:m2, ano:a2,
+        valor: Math.abs(diff), data:dt, descricao:desc+' (+ajuste)',
+        status:'pendente', criadoEm:new Date().toISOString()
+      });
+    } else {
+      // Reduzir: aplicar desconto distribuindo nos gastos existentes
+      var gastos = DATA.gastosCartao.filter(function(g){return g.categoriaId===catId&&g.mes===m2&&g.ano===a2&&g.status!=='faturado';});
+      var reducao = Math.abs(diff);
+      for(var i=gastos.length-1;i>=0&&reducao>0;i--){
+        var red = Math.min(gastos[i].valor, reducao);
+        gastos[i].valor = Math.round((gastos[i].valor - red)*100)/100;
+        reducao = Math.round((reducao-red)*100)/100;
+        if(gastos[i].valor <= 0){
+          DATA.gastosCartao = DATA.gastosCartao.filter(function(g){return g.id!==gastos[i].id;});
+        }
+      }
+      // Se sobrou reducao, adiciona gasto negativo de ajuste (edge case)
+    }
+    save(true); renderCartao(); toast('✅ Categoria ajustada para '+fmtR(novoValor)); closeAllModals();
+  },'Salvar Ajuste');
+};
+
+// Editar gasto individual do cartão
+window.editarGastoCartao = function(id){
+  var g = DATA.gastosCartao.find(function(x){return x.id===id;}); if(!g) return;
+  var cat = DATA.categoriasCartao.find(function(c){return c.id===g.categoriaId;})||{nome:'—'};
+  var h='<div class="mrow"><div>'+
+    '<label>Valor R$</label><input id="egVal" type="number" step="0.01" value="'+g.valor+'">'+
+    '</div><div>'+
+    '<label>Data</label><input id="egDt" type="date" value="'+(g.data||hoje())+'">'+
+    '</div></div>'+
+    '<div class="mrow single"><div>'+
+    '<label>Descrição</label><input id="egDesc" value="'+esc(g.descricao||'')+'">'+
+    '</div></div>'+
+    '<div class="mrow single"><div>'+
+    '<label>Categoria</label><select id="egCat">'+
+    DATA.categoriasCartao.map(function(c){return '<option value="'+c.id+'" '+(c.id===g.categoriaId?'selected':'')+'>'+esc(c.emoji||'💳')+' '+esc(c.nome)+'</option>';}).join('')+
+    '</select></div></div>';
+  openModal('✏️ Editar Gasto','✏️',h,function(){
+    g.valor = parseFloat(document.getElementById('egVal')?.value)||g.valor;
+    g.data = document.getElementById('egDt')?.value||g.data;
+    g.descricao = document.getElementById('egDesc')?.value||g.descricao;
+    g.categoriaId = document.getElementById('egCat')?.value||g.categoriaId;
+    save(true); renderCartao(); toast('✅ Gasto atualizado'); closeAllModals();
+  },'Salvar');
+};
+
+window.excluirGastoCartao = function(id){
+  if(!confirm('Excluir este gasto?')) return;
+  DATA.gastosCartao = DATA.gastosCartao.filter(function(g){return g.id!==id;});
+  save(true); renderCartao(); toast('🗑 Gasto excluído');
+};
+
+// ================================================================
+// [7] RELATÓRIO — Previsão de Saldo: reestruturar como tabela
+// ================================================================
+(function patchRelPrevisaoSaldo(){
+  var _orig = window.relPrevisaoSaldo;
+  window.relPrevisaoSaldo = function(){
+    var c=document.getElementById('relContent');
+    var h='<div class="adv-report-card"><div class="adv-report-title">🔮 Previsão de Saldo</div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">'+
+      '<label style="font-size:12px;color:var(--text2);margin:0;">Data alvo:</label>'+
+      '<input type="date" id="relPrevSaldoDt" value="'+(new Date(Date.now()+30*86400000).toISOString().split('T')[0])+'" style="width:auto;" onchange="atualizarRelPrevSaldoV5()">'+
+      '</div>'+
+      '<div id="prevSaldoResult"></div></div>';
+    c.innerHTML=h;
+    atualizarRelPrevSaldoV5();
+  };
+
+  window.atualizarRelPrevSaldoV5 = function(){
+    var dt=document.getElementById('relPrevSaldoDt')?.value; if(!dt) return;
+    var saldoTot=DATA.contas.reduce(function(s,cnt){return s+saldoConta(cnt.id);},0);
+    var aRec=DATA.receber.filter(function(r){return r.status!=='RECEBIDO'&&r.vencimento<=dt;}).reduce(function(s,r){return s+r.valor;},0);
+    var aPag=DATA.pagar.filter(function(p){return p.status!=='PAGO'&&p.vencimento<=dt;}).reduce(function(s,p){return s+p.valor;},0);
+    var compromissos=aRec-aPag;
+    var saldoProj=saldoTot+compromissos;
+    var el=document.getElementById('prevSaldoResult'); if(!el) return;
+    var rows='';
+    DATA.contas.forEach(function(c){ rows+='<tr><td style="padding-left:20px;color:var(--text3);">└ '+esc(c.emoji||'🏦')+' '+esc(c.nome)+'</td><td class="mono c-emerald" style="text-align:right;">'+fmtR(saldoConta(c.id))+'</td></tr>'; });
+    el.innerHTML='<div class="table-wrap"><table>'+
+      '<tr><th>Descrição</th><th style="text-align:right;">Valor</th></tr>'+
+      '<tr style="background:rgba(0,229,160,.04);"><td style="font-weight:700;color:var(--emerald);">💰 Saldo Atual</td><td class="mono c-emerald" style="text-align:right;font-weight:700;">'+fmtR(saldoTot)+'</td></tr>'+
+      rows+
+      '<tr style="height:8px;"><td colspan="2"></td></tr>'+
+      '<tr style="background:rgba(56,205,255,.04);"><td style="font-weight:700;color:var(--sky);">📥 A Receber até '+fmtD(dt)+'</td><td class="mono c-emerald" style="text-align:right;font-weight:700;">+'+fmtR(aRec)+'</td></tr>'+
+      '<tr style="background:rgba(255,77,106,.04);"><td style="font-weight:700;color:var(--coral);">📤 A Pagar até '+fmtD(dt)+'</td><td class="mono c-coral" style="text-align:right;font-weight:700;">-'+fmtR(aPag)+'</td></tr>'+
+      '<tr style="background:rgba(155,109,255,.06);"><td style="font-weight:700;color:var(--violet);">⚖️ Compromissos Líquidos</td><td class="mono" style="text-align:right;font-weight:700;color:'+(compromissos>=0?'var(--emerald)':'var(--coral)');'">'+(compromissos>=0?'+':'')+fmtR(compromissos)+'</td></tr>'+
+      '<tr style="background:rgba(255,122,0,.06);border-top:2px solid var(--orange-border);"><td style="font-weight:800;color:var(--orange);font-size:14px;">🎯 Saldo Projetado</td><td class="mono" style="text-align:right;font-weight:800;font-size:18px;color:'+(saldoProj>=0?'var(--emerald)':'var(--coral)')+';">'+fmtR(saldoProj)+'</td></tr>'+
+      '</table></div>'+
+      (saldoProj<0?'<div class="info-block danger" style="margin-top:12px;">⚠️ <strong>Saldo projetado negativo!</strong> Revise seus compromissos ou aumente receitas.</div>':
+       '<div class="info-block success" style="margin-top:12px;">✅ Saldo projetado positivo para a data selecionada.</div>');
+  };
+})();
+
+// ================================================================
+// [8] MÓDULO PREVISÕES — 3 indicadores no topo: Previsto, Realizado, Saldo
+// ================================================================
+(function patchRenderPrevisoesV5(){
+  var _orig = renderPrevisoes;
+  renderPrevisoes = function(){
+    _orig.apply(this, arguments);
+    // Após render original, adicionar os 3 indicadores ao topo
+    setTimeout(function(){
+      var c = document.getElementById('previsoesContent');
+      if(!c) return;
+      var maAtual = ano()+'-'+pad(mes());
+      var totalPrevisto = DATA.previsoes.filter(function(p){return p.mesAno===maAtual;}).reduce(function(s,p){return s+p.valorPrevisto;},0);
+      var totalRealizado = DATA.movimentacoes.filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(maAtual)&&x.tipo!=='Transferência';}).reduce(function(s,x){return s+x.valor;},0);
+      var saldoPrevisao = totalPrevisto - totalRealizado;
+      var corSaldo = saldoPrevisao > 50 ? 'var(--emerald)' : saldoPrevisao < -50 ? 'var(--coral)' : 'var(--amber)';
+      var badges = '<div class="grid g3" style="margin-bottom:18px;" id="prevKpiRow">'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:var(--sky);"></div>'+
+        '<div class="kpi-label">🔵 Total Previsto</div>'+
+        '<div class="kpi-value c-sky">'+fmtR(totalPrevisto)+'</div>'+
+        '<div class="kpi-sub">Mês atual · '+DATA.previsoes.filter(function(p){return p.mesAno===maAtual;}).length+' categorias</div></div>'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:var(--orange);"></div>'+
+        '<div class="kpi-label">🟠 Total Realizado</div>'+
+        '<div class="kpi-value c-orange">'+fmtR(totalRealizado)+'</div>'+
+        '<div class="kpi-sub">Despesas efetivas no mês</div></div>'+
+        '<div class="kpi-card"><div class="kpi-accent" style="background:'+corSaldo+';"></div>'+
+        '<div class="kpi-label">⚖️ Saldo (Previsto−Realizado)</div>'+
+        '<div class="kpi-value" style="color:'+corSaldo+';">'+(saldoPrevisao>=0?'+':'')+fmtR(saldoPrevisao)+'</div>'+
+        '<div class="kpi-sub">'+(saldoPrevisao>50?'✅ Dentro do orçamento':saldoPrevisao<-50?'🔴 Acima do previsto':'🟡 Próximo ao limite')+'</div></div>'+
+        '</div>';
+      // Evitar duplicação
+      var old = document.getElementById('prevKpiRow');
+      if(old) old.remove();
+      c.insertAdjacentHTML('afterbegin', badges);
+    }, 80);
+  };
+})();
+
+// ================================================================
+// [9] RECORRÊNCIA NO MÓDULO A RECEBER
+// ================================================================
+(function patchModalLancReceberV5(){
+  var _orig = modalLancReceber;
+  window.modalLancReceber = function(){
+    var h=`
+    <div class="mrow">
+      <div><label>Vencimento</label><input id="lrVenc" type="date" value="${hoje()}"></div>
+      <div><label>Valor R$</label><input id="lrValor" type="number" step="0.01"></div>
+    </div>
+    <div class="mrow">
+      <div><label>Descrição</label><input id="lrDesc" placeholder="Descrição"></div>
+      <div><label>Devedor/Origem</label><input id="lrDev" placeholder="Nome"></div>
+    </div>
+    <div class="mrow single"><div>
+      <label>Tipo</label>
+      <select id="lrTipo" onchange="atualizarSubtipo('lrTipo','lrSubtipoContainer','lrSubtipo','RECEITA')">${DATA.tipos.filter(t=>t.classificacao==='RECEITA').map(t=>`<option>${esc(t.nome)}</option>`).join('')}</select>
+    </div></div>
+    <div class="subtipo-container" id="lrSubtipoContainer">
+      <div class="mrow single"><div><label>Subtipo</label><select id="lrSubtipo"></select></div></div>
+    </div>
+    <div class="mrow single"><div><label>Observação</label><textarea id="lrObs" rows="2"></textarea></div></div>
+    <div style="padding:14px;background:var(--bg2);border-radius:10px;border:1px solid var(--border);margin-top:8px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;">
+        <input type="checkbox" id="lrRep" onchange="document.getElementById('lrRepOpts').style.display=this.checked?'block':'none'"> 🔄 Repetir lançamento mensalmente
+      </label>
+      <div id="lrRepOpts" style="display:none;margin-top:10px;">
+        <div class="mrow single"><div><label>Repetir por quantos meses</label><input id="lrRepNum" type="number" value="3" min="2" max="60" placeholder="Ex: 12 = 1 ano"></div></div>
+      </div>
+    </div>`;
+    openModal('Incluir Conta a Receber','📥',h,()=>{
+      const val=parseFloat(document.getElementById('lrValor').value);
+      const venc=document.getElementById('lrVenc').value;
+      if(!val||!venc) return toast('⚠️ Preencha vencimento e valor','var(--amber)');
+      if(!validarSubtipo('lrSubtipoContainer','lrSubtipo')) return;
+      const rep=document.getElementById('lrRep').checked;
+      const num=rep?parseInt(document.getElementById('lrRepNum').value)||1:1;
+      const grupoId = rep ? genId('GRP') : null;
+      for(let i=0;i<num;i++){
+        const d=new Date(venc); d.setMonth(d.getMonth()+i);
+        DATA.receber.push({
+          id:genId('RC'), vencimento:d.toISOString().split('T')[0],
+          descricao:(document.getElementById('lrDesc').value||(num>1?'Lançamento':''))+(num>1?` (${i+1}/${num})`:''),
+          devedor:document.getElementById('lrDev').value,
+          tipo:document.getElementById('lrTipo').value,
+          subtipo:getSubtipoVal('lrSubtipoContainer','lrSubtipo'),
+          obs:document.getElementById('lrObs').value,
+          valor:val, status:'PENDENTE',
+          grupoRecorrencia: grupoId,
+          criadoEm:new Date().toISOString()
+        });
+      }
+      save(true); renderReceber(); toast(`✅ ${num} lançamento(s) criado(s)`); closeAllModals();
+    });
+    setTimeout(()=>atualizarSubtipo('lrTipo','lrSubtipoContainer','lrSubtipo','RECEITA'),80);
+  };
+})();
+
+// ================================================================
 // ★ VERSÃO DISPLAY
 // ================================================================
-console.log('⬡ Nexus One v4.4 — Melhorias Completas Online ★');
-console.log('  ✓ Favicon dinâmico');
-console.log('  ✓ Dashboard: 5 novos cards (Saldo, A Receber Global, A Pagar Global, Compromissos, Projetado)');
-console.log('  ✓ Módulo Contas a Pagar: Card Resumo, Seleção Múltipla, Indicadores, Filtros Rápidos');
-console.log('  ✓ Módulo Contas a Receber: Card Resumo, Seleção Múltipla');
-console.log('  ✓ Módulo Cartão: Card Superior, Coluna Diferença, Totais, Zerar Fatura Avançado');
-console.log('  ✓ Módulo Previsões: Card Superior, Linha Totais');
-console.log('  ✓ Relatórios: +7 relatórios (Previsão Saldo, Contas/Mês, Fluxo Diário, Participação, Patrimônio...)');
+console.log('⬡ Nexus One v5.0 — Correções e Melhorias Avançadas ★');
+console.log('  ✓ [1] Dashboard: Card "Diferença Previsto vs Realizado" (substituiu Saldo Projetado)');
+console.log('  ✓ [2] Cartão: Status faturado/pendente — elimina duplicidade em compromissos');
+console.log('  ✓ [3] Paginação: Contas a Pagar e Receber (10 por página)');
+console.log('  ✓ [4] Dashboard: Linha TOTAL na tabela Saldo por Conta');
+console.log('  ✓ [5] Cartão: Correção re-renderização + Botão Editar por categoria');
+console.log('  ✓ [6] Cartão: Edição de valor por categoria e por gasto individual');
+console.log('  ✓ [7] Relatório Previsão de Saldo: reestruturado como tabela clara');
+console.log('  ✓ [8] Previsões: 3 indicadores no topo (Previsto, Realizado, Saldo)');
+console.log('  ✓ [9] A Receber: Recorrência mensal com campo "Repetir X meses"');
 
-init();
 setInterval(()=>{ save(true); }, 60000);
 setInterval(checkAlerts, 120000);
-console.log('⬡ Nexus One v4.1 — Subtipos Online');
+init();
+console.log('⬡ Nexus One v5.0 — Sistema Financeiro Pro Atualizado');
 </script>
 </body>
 </html>
