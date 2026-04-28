@@ -6778,6 +6778,580 @@ setInterval(()=>{ save(true); }, 60000);
 setInterval(checkAlerts, 120000);
 init();
 console.log('⬡ Nexus One v5.0 — Sistema Financeiro Pro Atualizado');
+
+// ================================================================
+// ★ NEXUS ONE v7.0 — UPGRADES VISUAIS & INTELIGÊNCIA FINANCEIRA
+// ================================================================
+
+// ----------------------------------------------------------------
+// [v7-1] BARRAS SUPERIORES POR MÓDULO — identidade visual clara
+// ----------------------------------------------------------------
+(function injectModuleTopBars(){
+  const bars = {
+    'module-dashboard':   { color:'#FF7A00', icon:'📊', label:'Dashboard Executivo',   gradient:'linear-gradient(90deg,rgba(255,122,0,.18) 0%,rgba(255,122,0,.04) 100%)' },
+    'module-contas':      { color:'#00E5A0', icon:'🏦', label:'Contas & Movimentações', gradient:'linear-gradient(90deg,rgba(0,229,160,.16) 0%,rgba(0,229,160,.04) 100%)' },
+    'module-pagar':       { color:'#FF4D6A', icon:'📤', label:'Contas a Pagar',         gradient:'linear-gradient(90deg,rgba(255,77,106,.16) 0%,rgba(255,77,106,.04) 100%)' },
+    'module-receber':     { color:'#00E5A0', icon:'📥', label:'Contas a Receber',       gradient:'linear-gradient(90deg,rgba(0,229,160,.16) 0%,rgba(0,229,160,.04) 100%)' },
+    'module-cartao':      { color:'#FFB830', icon:'💳', label:'Gastos com Cartão',      gradient:'linear-gradient(90deg,rgba(255,184,48,.16) 0%,rgba(255,184,48,.04) 100%)' },
+    'module-objetivos':   { color:'#9B6DFF', icon:'🎯', label:'Objetivos & Metas',      gradient:'linear-gradient(90deg,rgba(155,109,255,.16) 0%,rgba(155,109,255,.04) 100%)' },
+    'module-previsoes':   { color:'#38CDFF', icon:'📅', label:'Previsões Orçamentárias',gradient:'linear-gradient(90deg,rgba(56,205,255,.16) 0%,rgba(56,205,255,.04) 100%)' },
+    'module-relatorios':  { color:'#FF6B9D', icon:'📋', label:'Relatórios & Análises',  gradient:'linear-gradient(90deg,rgba(255,107,157,.16) 0%,rgba(255,107,157,.04) 100%)' },
+    'module-terceiros':   { color:'#9B6DFF', icon:'👥', label:'Conta de Terceiros',     gradient:'linear-gradient(90deg,rgba(155,109,255,.16) 0%,rgba(155,109,255,.04) 100%)' },
+    'module-config':      { color:'#8A93B0', icon:'⚙️', label:'Configurações',          gradient:'linear-gradient(90deg,rgba(138,147,176,.14) 0%,rgba(138,147,176,.04) 100%)' },
+  };
+  Object.entries(bars).forEach(function([id, cfg]){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var bar = document.createElement('div');
+    bar.className = 'module-top-bar';
+    bar.style.cssText = [
+      'display:flex;align-items:center;gap:10px;',
+      'padding:10px 22px;margin:-28px -28px 22px -28px;',
+      'background:'+cfg.gradient+';',
+      'border-bottom:2px solid '+cfg.color+'33;',
+      'border-radius:0;',
+      'position:relative;overflow:hidden;'
+    ].join('');
+    bar.innerHTML = [
+      '<div style="width:4px;height:30px;border-radius:2px;background:'+cfg.color+';box-shadow:0 0 8px '+cfg.color+'88;flex-shrink:0;"></div>',
+      '<span style="font-size:16px;">'+cfg.icon+'</span>',
+      '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2.5px;color:'+cfg.color+';">'+cfg.label+'</span>',
+      '<div style="flex:1;height:1px;background:linear-gradient(90deg,'+cfg.color+'33,transparent);margin-left:8px;"></div>',
+    ].join('');
+    el.insertBefore(bar, el.firstChild);
+  });
+})();
+
+// ----------------------------------------------------------------
+// [v7-2] NOVOS 3 CARDS NO DASHBOARD: Valor Previsto, A Pagar Mês, Despesas Pagas
+// ----------------------------------------------------------------
+(function patchDashboardV7(){
+  var _origRDV44 = renderDashboard;
+  renderDashboard = function(){
+    _origRDV44.apply(this, arguments);
+    setTimeout(function(){
+      var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+      var ms=pad(m); var ma=a+'-'+ms;
+
+      // 1. Valor Previsto do Mês (do módulo Previsões)
+      var totalPrevMes = (DATA.previsoes||[]).filter(function(p){return p.mesAno===ma;}).reduce(function(s,p){return s+p.valorPrevisto;},0);
+      // 2. Total de Contas a Pagar (mês atual, sem pagar)
+      var totalAPagarMes = (DATA.pagar||[]).filter(function(p){return p.vencimento&&p.vencimento.startsWith(ma)&&p.status!=='PAGO';}).reduce(function(s,p){return s+p.valor;},0);
+      var totalAPagarMesTot = (DATA.pagar||[]).filter(function(p){return p.vencimento&&p.vencimento.startsWith(ma);}).reduce(function(s,p){return s+p.valor;},0);
+      // 3. Total de Despesas Pagas (mês atual — movimentações + pagar marcados como PAGO)
+      var despPagas = (DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(ma)&&x.tipo!=='Transferência';}).reduce(function(s,x){return s+x.valor;},0);
+      var pagarPagoMes = (DATA.pagar||[]).filter(function(p){return p.vencimento&&p.vencimento.startsWith(ma)&&p.status==='PAGO';}).reduce(function(s,p){return s+p.valor;},0);
+
+      // Calcular pct de cada card
+      var pctPrev = totalPrevMes>0?(despPagas/totalPrevMes*100):0;
+      var pctPagar = totalAPagarMesTot>0?((totalAPagarMesTot-totalAPagarMes)/totalAPagarMesTot*100):0;
+      var despPagasMes = despPagas; // realizado
+
+      // Remove previous v7 row if exists
+      var existing = document.getElementById('dashRowV7');
+      if(existing) existing.remove();
+
+      // Fluxo card style (como no print de referência)
+      var html = '<div id="dashRowV7" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:18px;">';
+
+      // Card 1: Valor Previsto do Mês
+      var p1pct = Math.min(pctPrev,100).toFixed(0);
+      var p1cor = pctPrev>100?'var(--coral)':pctPrev>80?'var(--amber)':'var(--sky)';
+      var p1fill = pctPrev>100?'pf-coral':pctPrev>80?'pf-amber':'pf-cyan';
+      html += '<div class="kpi-card" style="border-color:rgba(56,205,255,.25);background:rgba(56,205,255,.02);">' +
+        '<div class="kpi-accent" style="background:var(--sky);"></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div class="kpi-label">🔵 Valor Previsto do Mês</div>' +
+        '<span class="badge bg-sky" style="font-size:8px;">PREVISÃO</span></div>' +
+        '<div class="kpi-value c-sky">'+fmtR(totalPrevMes)+'</div>' +
+        '<div class="kpi-sub" style="margin-bottom:8px;">'+(totalPrevMes===0?'Defina previsões no módulo Previsões':'Orçamento planejado para '+nomeMesFull(m))+'</div>' +
+        '<div class="progress"><div class="progress-fill '+p1fill+'" style="width:'+p1pct+'%"></div></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px;">' +
+        '<span>'+p1pct+'% executado</span><span style="color:'+p1cor+';">'+fmtR(despPagasMes)+' gastos</span></div>' +
+        '</div>';
+
+      // Card 2: Total A Pagar Mês
+      var p2pct = Math.min(pctPagar,100).toFixed(0);
+      var p2cor = pctPagar>=100?'var(--emerald)':pctPagar>=60?'var(--amber)':'var(--coral)';
+      html += '<div class="kpi-card" style="border-color:rgba(255,77,106,.25);background:rgba(255,77,106,.02);">' +
+        '<div class="kpi-accent" style="background:var(--coral);"></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div class="kpi-label">📤 Total Contas a Pagar</div>' +
+        '<span class="badge bg-coral" style="font-size:8px;">MÊS ATUAL</span></div>' +
+        '<div class="kpi-value c-coral">'+fmtR(totalAPagarMes)+'</div>' +
+        '<div class="kpi-sub" style="margin-bottom:8px;">'+((DATA.pagar||[]).filter(function(p){return p.vencimento&&p.vencimento.startsWith(ma)&&p.status!=='PAGO';}).length)+' pendentes de '+((DATA.pagar||[]).filter(function(p){return p.vencimento&&p.vencimento.startsWith(ma);}).length)+' lançamentos</div>' +
+        '<div class="progress"><div class="progress-fill pf-coral" style="width:'+Math.min(100-pctPagar,100).toFixed(0)+'%"></div></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px;">' +
+        '<span style="color:'+p2cor+';">'+p2pct+'% quitado</span><span>'+fmtR(totalAPagarMesTot-totalAPagarMes)+' pago</span></div>' +
+        '</div>';
+
+      // Card 3: Total Despesas Pagas Mês
+      var p3pct = totalPrevMes>0?Math.min(despPagas/totalPrevMes*100,200).toFixed(0):'—';
+      var p3cor = totalPrevMes>0?(despPagas>totalPrevMes?'var(--coral)':despPagas/totalPrevMes>0.8?'var(--amber)':'var(--emerald)'):'var(--emerald)';
+      var p3fill = totalPrevMes>0?(despPagas>totalPrevMes?'pf-coral':despPagas/totalPrevMes>0.8?'pf-amber':'pf-emerald'):'pf-emerald';
+      html += '<div class="kpi-card" style="border-color:rgba(0,229,160,.25);background:rgba(0,229,160,.02);">' +
+        '<div class="kpi-accent" style="background:var(--emerald);"></div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div class="kpi-label">✅ Despesas Pagas</div>' +
+        '<span class="badge bg-emerald" style="font-size:8px;">MÊS ATUAL</span></div>' +
+        '<div class="kpi-value c-emerald">'+fmtR(despPagas)+'</div>' +
+        '<div class="kpi-sub" style="margin-bottom:8px;">Saídas efetivas em '+nomeMesFull(m)+'</div>' +
+        (totalPrevMes>0?'<div class="progress"><div class="progress-fill '+p3fill+'" style="width:'+Math.min(despPagas/totalPrevMes*100,100).toFixed(0)+'%"></div></div>':'')+
+        '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px;">' +
+        (totalPrevMes>0?'<span>'+p3pct+'% do previsto</span>':'<span>Sem previsão definida</span>')+
+        '<span style="color:'+p3cor+';">'+(totalPrevMes>0?fmtR(totalPrevMes-despPagas)+' restante':'')+'</span></div>' +
+        '</div>';
+
+      html += '</div>';
+
+      // Insert after dashFlow
+      var flowBar = document.getElementById('dashFlow');
+      if(flowBar && flowBar.parentNode){
+        flowBar.parentNode.insertAdjacentHTML('afterend', html);
+        // move it after the flow bar directly
+        var newRow = document.getElementById('dashRowV7');
+        if(newRow) flowBar.parentNode.insertBefore(newRow, flowBar.nextSibling);
+      }
+    }, 150);
+  };
+})();
+
+// ----------------------------------------------------------------
+// [v7-3] LÓGICA DOS CARDS — Metas inteligentes (Entradas, Saídas, Diferença)
+// Já parcialmente feito no v44. Reforçamos aqui com lógica precisa.
+// ----------------------------------------------------------------
+(function patchMonthlySummaryV7(){
+  var _origRD = renderDashboard;
+  renderDashboard = function(){
+    _origRD.apply(this, arguments);
+    setTimeout(function(){
+      var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+      var ms=pad(m); var ma=a+'-'+ms;
+
+      // Meta Entradas = Total a receber no mês
+      var metaEntradas = (DATA.receber||[]).filter(function(r){return r.vencimento&&r.vencimento.startsWith(ma);}).reduce(function(s,r){return s+r.valor;},0);
+      // Meta Saídas = Valor previsto de gastos do mês
+      var metaSaidas = (DATA.previsoes||[]).filter(function(p){return p.mesAno===ma;}).reduce(function(s,p){return s+p.valorPrevisto;},0);
+      // Real Entradas e Saídas
+      var recMes = (DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(ma)&&x.tipo!=='Transferência';}).reduce(function(s,x){return s+x.valor;},0);
+      var despMes = (DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(ma)&&x.tipo!=='Transferência';}).reduce(function(s,x){return s+x.valor;},0);
+      var saldoMes = recMes - despMes;
+      var diffPrevReal = metaSaidas - despMes; // positivo = abaixo do previsto (bom)
+
+      // Status da diferença mensal
+      var diffStatus, diffCls;
+      if(metaSaidas===0){ diffStatus='—'; diffCls=''; }
+      else if(despMes<=metaSaidas*0.85){ diffStatus='✅ Dentro da meta'; diffCls='status-ok'; }
+      else if(despMes<=metaSaidas){ diffStatus='⚠️ Em risco'; diffCls='status-risk'; }
+      else { diffStatus='🔴 Acima do limite'; diffCls='status-exceeded'; }
+
+      var msc = document.getElementById('dashMonthlySummary');
+      if(!msc) return;
+
+      var pctE = metaEntradas>0?(recMes/metaEntradas*100):0;
+      var pctS = metaSaidas>0?(despMes/metaSaidas*100):0;
+      var fillE = pctE>=100?'pf-emerald':pctE>=70?'pf-amber':'pf-coral';
+      var fillS = pctS>=100?'pf-coral':pctS>=80?'pf-amber':'pf-emerald';
+
+      msc.innerHTML = '<div class="month-summary-card">' +
+        // Entradas
+        '<div class="month-col">' +
+        '<div class="month-col-label">⬆ Entradas no Mês</div>' +
+        '<div class="month-col-val c-emerald">'+fmtR(recMes)+'</div>' +
+        (metaEntradas>0?
+          '<div style="font-size:10px;color:var(--text3);margin-top:4px;">Meta (A Receber): '+fmtR(metaEntradas)+'</div>'+
+          '<div class="progress" style="margin-top:6px;height:5px;"><div class="progress-fill '+fillE+'" style="width:'+Math.min(pctE,100).toFixed(0)+'%"></div></div>'+
+          '<div style="font-size:9px;color:var(--text3);margin-top:3px;">'+pctE.toFixed(0)+'% recebido</div>'
+        :'') +
+        '</div>' +
+        // Saídas
+        '<div class="month-col">' +
+        '<div class="month-col-label">⬇ Saídas no Mês</div>' +
+        '<div class="month-col-val c-coral">'+fmtR(despMes)+'</div>' +
+        (metaSaidas>0?
+          '<div style="font-size:10px;color:var(--text3);margin-top:4px;">Meta (Previsto): '+fmtR(metaSaidas)+'</div>'+
+          '<div class="progress" style="margin-top:6px;height:5px;"><div class="progress-fill '+fillS+'" style="width:'+Math.min(pctS,100).toFixed(0)+'%"></div></div>'+
+          '<div style="font-size:9px;color:var(--text3);margin-top:3px;">'+pctS.toFixed(0)+'% do orçamento usado</div>'
+        :'') +
+        '</div>' +
+        // Diferença
+        '<div class="month-col">' +
+        '<div class="month-col-label">⚖ Diferença Mensal</div>' +
+        '<div class="month-col-val '+(saldoMes>=0?'c-emerald':'c-coral')+'">'+(saldoMes>=0?'+':'')+fmtR(saldoMes)+'</div>' +
+        (diffCls?'<div class="month-status '+diffCls+'">'+diffStatus+'</div>':'') +
+        (metaSaidas>0?'<div style="font-size:10px;color:var(--text3);margin-top:6px;">Diff. previsto: '+(diffPrevReal>=0?'+':'')+fmtR(diffPrevReal)+'</div>':'') +
+        '</div>' +
+        '</div>';
+    }, 200);
+  };
+})();
+
+// ----------------------------------------------------------------
+// [v7-4] RELATÓRIO POR TIPO — com filtro de datas, grupos, totais, %
+// ----------------------------------------------------------------
+window.relMovimentacaoPorTipo = function(){
+  var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+  var dtIni = a+'-'+pad(m)+'-01';
+  var dtFim = a+'-'+pad(m)+'-31';
+  var c = document.getElementById('relContent');
+  c.innerHTML = '<div class="adv-report-card" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:2.5px;color:var(--orange);font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">📊 Movimentação por Tipo</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px;">'+
+    '<div><label>Data Início</label><input type="date" id="rptIni" value="'+dtIni+'" style="width:140px;"></div>'+
+    '<div><label>Data Fim</label><input type="date" id="rptFim" value="'+dtFim+'" style="width:140px;"></div>'+
+    '<button class="btn btn-primary btn-sm" style="margin-top:16px;" onclick="execRelTipo()">🔍 Gerar</button>'+
+    '</div><div id="rptTipoResult"></div></div>';
+  c.scrollIntoView({behavior:'smooth'});
+  setTimeout(execRelTipo, 100);
+};
+
+window.execRelTipo = function(){
+  var ini = document.getElementById('rptIni')?.value||'';
+  var fim = document.getElementById('rptFim')?.value||'';
+  var movs = DATA.movimentacoes.filter(function(x){
+    return x.status!=='ANULADO' && x.tipo!=='Transferência' &&
+      (!ini||x.data>=ini) && (!fim||x.data<=fim);
+  });
+  var pagar = DATA.pagar.filter(function(p){
+    return p.status==='PAGO' && (!ini||p.vencimento>=ini) && (!fim||p.vencimento<=fim);
+  });
+  var receber = DATA.receber.filter(function(r){
+    return r.status==='RECEBIDO' && (!ini||r.vencimento>=ini) && (!fim||r.vencimento<=fim);
+  });
+
+  // Group by tipo + classificação
+  var grupos = {};
+  function addGrupo(key, val, op){
+    if(!grupos[key]) grupos[key]={tipo:key, op:op, total:0, count:0};
+    grupos[key].total += val; grupos[key].count++;
+  }
+  movs.forEach(function(x){ addGrupo((x.tipoOp==='RECEITA'?'RECEITA':'DESPESA')+' — '+(x.tipo||'Outros'), x.valor, x.tipoOp); });
+
+  var totalRec=0, totalDesp=0;
+  Object.values(grupos).forEach(function(g){ if(g.op==='RECEITA') totalRec+=g.total; else totalDesp+=g.total; });
+  var totalGeral = totalRec + totalDesp;
+
+  var sorted = Object.values(grupos).sort(function(a,b){
+    if(a.op!==b.op) return a.op==='RECEITA'?-1:1;
+    return b.total-a.total;
+  });
+
+  if(!sorted.length){
+    document.getElementById('rptTipoResult').innerHTML='<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Nenhum dado no período</div></div>';
+    return;
+  }
+
+  var h = '<div class="table-wrap"><table>'+
+    '<tr><th>Classificação / Tipo</th><th style="text-align:right;">Qtd.</th><th style="text-align:right;">Total R$</th><th style="text-align:right;">% do Total</th></tr>';
+
+  var lastOp='';
+  sorted.forEach(function(g){
+    if(g.op!==lastOp){
+      lastOp=g.op;
+      var opTotal = g.op==='RECEITA'?totalRec:totalDesp;
+      h += '<tr style="background:'+(g.op==='RECEITA'?'rgba(0,229,160,.06)':'rgba(255,77,106,.06)')+';"><td colspan="4" style="font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:'+(g.op==='RECEITA'?'var(--emerald)':'var(--coral)')+';">'+
+        (g.op==='RECEITA'?'▲ RECEITAS':'▼ DESPESAS')+' — Total: '+fmtR(opTotal)+'</td></tr>';
+    }
+    var pct = totalGeral>0?(g.total/totalGeral*100):0;
+    var barW = totalRec+totalDesp>0?(g.total/(g.op==='RECEITA'?totalRec:totalDesp)*100):0;
+    h += '<tr><td>'+
+      '<div style="display:flex;align-items:center;gap:8px;">'+
+      '<span style="font-size:12px;">'+g.tipo.split(' — ')[1]+'</span></div>'+
+      '<div style="margin-top:4px;height:3px;background:var(--surface3);border-radius:3px;width:100%;"><div style="height:3px;border-radius:3px;width:'+Math.min(barW,100).toFixed(0)+'%;background:'+(g.op==='RECEITA'?'var(--emerald)':'var(--coral)')+'"></div></div>'+
+      '</td>'+
+      '<td class="mono" style="text-align:right;color:var(--text2);">'+g.count+'</td>'+
+      '<td class="mono '+(g.op==='RECEITA'?'c-emerald':'c-coral')+'" style="text-align:right;font-weight:700;">'+fmtR(g.total)+'</td>'+
+      '<td class="mono" style="text-align:right;color:var(--text3);">'+pct.toFixed(1)+'%</td>'+
+      '</tr>';
+  });
+
+  h += '<tr style="background:rgba(255,122,0,.06);border-top:2px solid var(--orange-border);">'+
+    '<td style="font-weight:800;color:var(--orange);">TOTAL GERAL</td>'+
+    '<td class="mono" style="text-align:right;font-weight:800;">'+sorted.reduce(function(s,g){return s+g.count;},0)+'</td>'+
+    '<td class="mono c-orange" style="text-align:right;font-weight:800;">'+fmtR(totalGeral)+'</td>'+
+    '<td class="mono" style="text-align:right;color:var(--text2);">100%</td></tr>'+
+    '</table></div>';
+
+  // Summary cards
+  h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">'+
+    '<div class="kpi-card" style="border-color:rgba(0,229,160,.3);padding:16px 18px;"><div class="kpi-label">Total Receitas</div><div class="kpi-value c-emerald" style="font-size:26px;">'+fmtR(totalRec)+'</div></div>'+
+    '<div class="kpi-card" style="border-color:rgba(255,77,106,.3);padding:16px 18px;"><div class="kpi-label">Total Despesas</div><div class="kpi-value c-coral" style="font-size:26px;">'+fmtR(totalDesp)+'</div></div>'+
+    '<div class="kpi-card" style="border-color:rgba(255,122,0,.3);padding:16px 18px;"><div class="kpi-label">Resultado</div><div class="kpi-value '+(totalRec-totalDesp>=0?'c-emerald':'c-coral')+'" style="font-size:26px;">'+(totalRec-totalDesp>=0?'+':'')+fmtR(totalRec-totalDesp)+'</div></div>'+
+    '</div>'+h;
+
+  document.getElementById('rptTipoResult').innerHTML = h;
+};
+
+// ----------------------------------------------------------------
+// [v7-5] RELATÓRIO POR SUBTIPO
+// ----------------------------------------------------------------
+window.relMovimentacaoPorSubtipo = function(){
+  var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+  var dtIni=a+'-'+pad(m)+'-01', dtFim=a+'-'+pad(m)+'-31';
+  var c=document.getElementById('relContent');
+  c.innerHTML='<div class="adv-report-card" style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;">'+
+    '<div style="font-size:10px;text-transform:uppercase;letter-spacing:2.5px;color:var(--violet);font-weight:700;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">📊 Movimentação por Subtipo</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px;">'+
+    '<div><label>Data Início</label><input type="date" id="rpsIni" value="'+dtIni+'" style="width:140px;"></div>'+
+    '<div><label>Data Fim</label><input type="date" id="rpsFim" value="'+dtFim+'" style="width:140px;"></div>'+
+    '<button class="btn btn-sm" style="margin-top:16px;border-color:rgba(155,109,255,.4);color:var(--violet);" onclick="execRelSubtipo()">🔍 Gerar</button>'+
+    '</div><div id="rpsResult"></div></div>';
+  c.scrollIntoView({behavior:'smooth'});
+  setTimeout(execRelSubtipo,100);
+};
+
+window.execRelSubtipo = function(){
+  var ini=document.getElementById('rpsIni')?.value||'';
+  var fim=document.getElementById('rpsFim')?.value||'';
+  var movs=DATA.movimentacoes.filter(function(x){
+    return x.status!=='ANULADO'&&x.tipo!=='Transferência'&&(!ini||x.data>=ini)&&(!fim||x.data<=fim);
+  });
+
+  var grupos={};
+  movs.forEach(function(x){
+    var sub = x.subtipo||'(sem subtipo)';
+    var key = (x.tipoOp==='RECEITA'?'RECEITA':'DESPESA')+' ‣ '+(x.tipo||'Outros')+' ‣ '+sub;
+    if(!grupos[key]) grupos[key]={label:key, op:x.tipoOp, tipo:x.tipo||'Outros', sub:sub, total:0, count:0};
+    grupos[key].total+=x.valor; grupos[key].count++;
+  });
+
+  var totalRec=0, totalDesp=0;
+  Object.values(grupos).forEach(function(g){if(g.op==='RECEITA')totalRec+=g.total;else totalDesp+=g.total;});
+
+  var sorted=Object.values(grupos).sort(function(a,b){
+    if(a.op!==b.op) return a.op==='RECEITA'?-1:1;
+    if(a.tipo!==b.tipo) return a.tipo.localeCompare(b.tipo);
+    return b.total-a.total;
+  });
+
+  if(!sorted.length){
+    document.getElementById('rpsResult').innerHTML='<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Nenhum dado no período</div></div>';
+    return;
+  }
+
+  var h='<div class="table-wrap"><table>'+
+    '<tr><th>Tipo</th><th>Subtipo</th><th style="text-align:right;">Qtd.</th><th style="text-align:right;">Total R$</th><th style="text-align:right;">% Categoria</th></tr>';
+
+  var lastOp='', lastTipo='';
+  sorted.forEach(function(g){
+    if(g.op!==lastOp){
+      lastOp=g.op; lastTipo='';
+      var opTot=g.op==='RECEITA'?totalRec:totalDesp;
+      h+='<tr style="background:'+(g.op==='RECEITA'?'rgba(0,229,160,.06)':'rgba(255,77,106,.06)')+';"><td colspan="5" style="font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:'+(g.op==='RECEITA'?'var(--emerald)':'var(--coral)')+';">'+
+        (g.op==='RECEITA'?'▲ RECEITAS':'▼ DESPESAS')+' — Total: '+fmtR(opTot)+'</td></tr>';
+    }
+    if(g.tipo!==lastTipo){
+      lastTipo=g.tipo;
+      var tipoTot=sorted.filter(function(x){return x.op===g.op&&x.tipo===g.tipo;}).reduce(function(s,x){return s+x.total;},0);
+      h+='<tr style="background:rgba(255,122,0,.03);"><td colspan="2" style="font-weight:700;color:var(--orange);padding-left:16px;">'+esc(g.tipo)+'</td>'+
+        '<td class="mono" style="text-align:right;color:var(--text3);">'+sorted.filter(function(x){return x.op===g.op&&x.tipo===g.tipo;}).reduce(function(s,x){return s+x.count;},0)+'</td>'+
+        '<td class="mono '+(g.op==='RECEITA'?'c-emerald':'c-coral')+'" style="text-align:right;font-weight:700;">'+fmtR(tipoTot)+'</td><td></td></tr>';
+    }
+    var tipoTot2=sorted.filter(function(x){return x.op===g.op&&x.tipo===g.tipo;}).reduce(function(s,x){return s+x.total;},0);
+    var pct=tipoTot2>0?(g.total/tipoTot2*100):0;
+    h+='<tr><td style="padding-left:30px;color:var(--text2);font-size:11px;">└</td>'+
+      '<td style="font-size:12px;">'+esc(g.sub)+'</td>'+
+      '<td class="mono" style="text-align:right;color:var(--text3);">'+g.count+'</td>'+
+      '<td class="mono '+(g.op==='RECEITA'?'c-emerald':'c-coral')+'" style="text-align:right;">'+fmtR(g.total)+'</td>'+
+      '<td class="mono" style="text-align:right;color:var(--text3);">'+pct.toFixed(1)+'%</td></tr>';
+  });
+  h+='</table></div>';
+  document.getElementById('rpsResult').innerHTML=h;
+};
+
+// ----------------------------------------------------------------
+// [v7-6] SIMULADOR DE COMPRAS
+// ----------------------------------------------------------------
+window.abrirSimulador = function(){
+  var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+  var saldoTot=DATA.contas.reduce(function(s,c){return s+saldoConta(c.id);},0);
+  var totRecGlobal=DATA.receber.filter(function(r){return r.status!=='RECEBIDO';}).reduce(function(s,r){return s+r.valor;},0);
+  var totPagGlobal=DATA.pagar.filter(function(p){return p.status!=='PAGO';}).reduce(function(s,p){return s+p.valor;},0);
+  var saldoProj=saldoTot+totRecGlobal-totPagGlobal;
+
+  var contasOpts=DATA.contas.map(function(c){return '<option value="'+c.id+'">'+esc(c.emoji||'🏦')+' '+esc(c.nome)+' ('+fmtR(saldoConta(c.id))+')</option>';}).join('');
+
+  var h='<div id="simResult" style="margin-top:16px;"></div>'+
+    '<div class="grid g2" style="gap:12px;margin-bottom:16px;">'+
+    '<div><label>💰 Valor da Compra (R$)</label><input type="number" step="0.01" id="simValor" placeholder="0,00" oninput="calcSimulador()"></div>'+
+    '<div><label>📅 Data Prevista</label><input type="date" id="simData" value="'+hoje()+'" onchange="calcSimulador()"></div>'+
+    '</div>'+
+    '<div class="grid g2" style="gap:12px;margin-bottom:16px;">'+
+    '<div><label>🏦 Conta</label><select id="simConta" onchange="calcSimulador()">'+(contasOpts||'<option>Nenhuma conta</option>')+'</select></div>'+
+    '<div><label>🛒 Tipo de Pagamento</label><select id="simTipo" onchange="calcSimulador()">'+
+    '<option value="avista">À Vista</option><option value="parcelado">Parcelado</option></select></div>'+
+    '</div>'+
+    '<div id="simParcelasWrap" style="display:none;margin-bottom:16px;">'+
+    '<label>📋 Número de Parcelas</label><input type="number" id="simParcelas" value="3" min="2" max="60" oninput="calcSimulador()">'+
+    '</div>'+
+    '<div id="simResult"></div>';
+
+  openModal('🛒 Simulador de Compras','🛒',h,null,'');
+
+  // Bind tipo toggle
+  setTimeout(function(){
+    var el=document.getElementById('simTipo');
+    if(el) el.addEventListener('change',function(){
+      var w=document.getElementById('simParcelasWrap');
+      if(w) w.style.display=this.value==='parcelado'?'block':'none';
+    });
+    calcSimulador();
+  },100);
+};
+
+window.calcSimulador = function(){
+  var val=parseFloat(document.getElementById('simValor')?.value)||0;
+  var data=document.getElementById('simData')?.value||hoje();
+  var tipo=document.getElementById('simTipo')?.value||'avista';
+  var parcelas=parseInt(document.getElementById('simParcelas')?.value)||1;
+  var contaId=document.getElementById('simConta')?.value||'';
+  var res=document.getElementById('simResult');
+  if(!res||val<=0) return;
+
+  var conta=DATA.contas.find(function(c){return c.id===contaId;});
+  var saldoCt=contaId?saldoConta(contaId):0;
+  var saldoTotal=DATA.contas.reduce(function(s,c){return s+saldoConta(c.id);},0);
+  var totRecGlobal=DATA.receber.filter(function(r){return r.status!=='RECEBIDO';}).reduce(function(s,r){return s+r.valor;},0);
+  var totPagGlobal=DATA.pagar.filter(function(p){return p.status!=='PAGO';}).reduce(function(s,p){return s+p.valor;},0);
+  var saldoProj=saldoTotal+totRecGlobal-totPagGlobal;
+
+  var parcVal=tipo==='parcelado'?val/parcelas:val;
+  var novoSaldoConta=saldoCt-parcVal;
+  var novoSaldoTotal=saldoTotal-(tipo==='avista'?val:parcVal);
+  var novoSaldoProj=saldoProj-(tipo==='avista'?val:parcVal);
+
+  var corCtApos=novoSaldoConta>=0?'c-emerald':'c-coral';
+  var corTotApos=novoSaldoTotal>=0?'c-emerald':'c-coral';
+  var corProjApos=novoSaldoProj>=0?'c-emerald':'c-coral';
+  var alerta=novoSaldoConta<0?'<div class="info-block danger" style="margin-top:12px;">⚠️ Saldo insuficiente na conta selecionada! Você precisará de <strong>'+fmtR(-novoSaldoConta)+'</strong> adicionais.</div>':
+    novoSaldoProj<0?'<div class="info-block warn" style="margin-top:12px;">⚠️ Saldo projetado ficará negativo após esta compra.</div>':
+    '<div class="info-block success" style="margin-top:12px;">✅ Compra viável — saldo projetado continua positivo.</div>';
+
+  var linha = tipo==='parcelado'?
+    '<div class="info-block" style="margin-top:10px;">📋 '+parcelas+'x de '+fmtR(parcVal)+' · Total: '+fmtR(val)+'</div>':
+    '<div class="info-block" style="margin-top:10px;">💳 Pagamento à vista em '+fmtD(data)+'</div>';
+
+  res.innerHTML='<div class="table-wrap" style="margin-top:0;"><table>'+
+    '<tr><th>Indicador</th><th style="text-align:right;">Antes</th><th style="text-align:right;">Depois</th><th style="text-align:right;">Impacto</th></tr>'+
+    (conta?'<tr><td>💳 '+esc(conta.emoji||'🏦')+' '+esc(conta.nome)+'</td>'+
+    '<td class="mono '+(saldoCt>=0?'c-emerald':'c-coral')+'" style="text-align:right;">'+fmtR(saldoCt)+'</td>'+
+    '<td class="mono '+corCtApos+'" style="text-align:right;font-weight:700;">'+fmtR(novoSaldoConta)+'</td>'+
+    '<td class="mono c-coral" style="text-align:right;">-'+fmtR(parcVal)+'</td></tr>':'')+
+    '<tr><td>💰 Saldo Total</td>'+
+    '<td class="mono '+(saldoTotal>=0?'c-emerald':'c-coral')+'" style="text-align:right;">'+fmtR(saldoTotal)+'</td>'+
+    '<td class="mono '+corTotApos+'" style="text-align:right;font-weight:700;">'+fmtR(novoSaldoTotal)+'</td>'+
+    '<td class="mono c-coral" style="text-align:right;">-'+fmtR(tipo==='avista'?val:parcVal)+'</td></tr>'+
+    '<tr><td>🔮 Saldo Projetado</td>'+
+    '<td class="mono '+(saldoProj>=0?'c-emerald':'c-coral')+'" style="text-align:right;">'+fmtR(saldoProj)+'</td>'+
+    '<td class="mono '+corProjApos+'" style="text-align:right;font-weight:700;">'+fmtR(novoSaldoProj)+'</td>'+
+    '<td class="mono c-coral" style="text-align:right;">-'+fmtR(tipo==='avista'?val:parcVal)+'</td></tr>'+
+    '</table></div>'+linha+alerta;
+};
+
+// ----------------------------------------------------------------
+// [v7-7] ADICIONAR NOVOS RELATÓRIOS NO GRID + SIMULADOR NO NAV
+// ----------------------------------------------------------------
+(function patchRelGridV7(){
+  var _origRelV44 = renderRelatorios;
+  renderRelatorios = function(){
+    _origRelV44.apply(this, arguments);
+    setTimeout(function(){
+      var rg = document.getElementById('relGrid');
+      if(!rg) return;
+      // Adiciona 3 novos cards ao final
+      var extra =
+        '<div class="card" style="cursor:pointer;" onclick="relMovimentacaoPorTipo()">'+
+        '<div style="font-size:32px;margin-bottom:12px;">🗂</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:5px;">Movimentação por Tipo</div>'+
+        '<div style="font-size:11px;color:var(--text3);">Filtro por data · Total · % por categoria</div></div>'+
+
+        '<div class="card" style="cursor:pointer;" onclick="relMovimentacaoPorSubtipo()">'+
+        '<div style="font-size:32px;margin-bottom:12px;">🔢</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:5px;">Movimentação por Subtipo</div>'+
+        '<div style="font-size:11px;color:var(--text3);">Detalhamento por subtipo · Agrupamento hierárquico</div></div>'+
+
+        '<div class="card" style="cursor:pointer;border-color:rgba(155,109,255,.25);" onclick="abrirSimulador()">'+
+        '<div style="font-size:32px;margin-bottom:12px;">🛒</div>'+
+        '<div style="font-size:14px;font-weight:700;margin-bottom:5px;">Simulador de Compras</div>'+
+        '<div style="font-size:11px;color:var(--text3);">Simule impacto antes de decidir · À vista ou parcelado</div></div>';
+
+      rg.insertAdjacentHTML('beforeend', extra);
+    }, 100);
+  };
+})();
+
+// ----------------------------------------------------------------
+// [v7-8] SIMULADOR NO NAV — adicionar item à sidebar
+// ----------------------------------------------------------------
+(function addSimuladorNav(){
+  var nav = document.querySelector('.sidebar-nav');
+  if(!nav) return;
+  var secs = nav.querySelectorAll('.nav-section');
+  var targetSec = null;
+  secs.forEach(function(s){ if(s.textContent.trim().toLowerCase()==='planejamento') targetSec=s; });
+  if(!targetSec) return;
+  var simItem = document.createElement('div');
+  simItem.className = 'nav-item';
+  simItem.innerHTML = '<div class="nav-icon">🛒</div>Simulador';
+  simItem.onclick = function(){ navigateTo('relatorios'); setTimeout(abrirSimulador,300); };
+  // Insert after the section header — find the last nav-item before the next section
+  var next = targetSec.nextSibling;
+  while(next && next.className && next.className.indexOf('nav-section')===-1){
+    next=next.nextSibling;
+  }
+  if(next) nav.insertBefore(simItem, next);
+  else nav.appendChild(simItem);
+})();
+
+// ----------------------------------------------------------------
+// [v7-9] PADRONIZAÇÃO VISUAL DAS TABELAS — sombras, totais destacados
+// ----------------------------------------------------------------
+(function injectTableStyles(){
+  var style=document.createElement('style');
+  style.textContent=`
+  /* v7 Table Enhancements */
+  .table-wrap {
+    box-shadow: 0 4px 20px rgba(0,0,0,.3), 0 0 0 1px var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+  }
+  thead tr th { background: var(--surface2) !important; }
+  tr.tr-totais td, tr.tr-totais-conta td {
+    background: rgba(255,122,0,.06) !important;
+    border-top: 2px solid var(--orange-border) !important;
+    font-weight: 800 !important;
+    color: var(--orange) !important;
+  }
+  td.c-coral { color: var(--coral) !important; }
+  td.c-emerald { color: var(--emerald) !important; }
+  td.c-orange { color: var(--orange) !important; }
+  /* Positive/negative row highlights */
+  tr:hover td { transition: background .15s; }
+  /* Table total row */
+  .tr-totais td { font-family: 'DM Mono', monospace; }
+
+  /* v7 Module top bar responsive */
+  .module-top-bar { transition: opacity .3s; }
+  @media(max-width:768px){
+    .module-top-bar { padding: 8px 14px; margin: -18px -18px 18px -18px !important; }
+  }
+
+  /* v7 Simulator */
+  .adv-report-card { margin-top: 18px; }
+  `;
+  document.head.appendChild(style);
+})();
+
+console.log('⬡ Nexus One v7.0 — Visual Upgrade + Inteligência Financeira');
+console.log('  ✓ [v7-1] Barras superiores por módulo (identidade visual)');
+console.log('  ✓ [v7-2] 3 novos cards no Dashboard (Previsto, A Pagar Mês, Despesas Pagas)');
+console.log('  ✓ [v7-3] Lógica inteligente de metas (Entradas=A Receber, Saídas=Previsto)');
+console.log('  ✓ [v7-4] Relatório Movimentação por Tipo com filtro de datas');
+console.log('  ✓ [v7-5] Relatório Movimentação por Subtipo hierárquico');
+console.log('  ✓ [v7-6] Simulador de Compras (à vista / parcelado)');
+console.log('  ✓ [v7-7] Novos cards de relatório no grid');
+console.log('  ✓ [v7-8] Simulador acessível via sidebar');
+console.log('  ✓ [v7-9] Padronização visual de tabelas (sombras, totais, cores)');
 </script>
 </body>
 </html>
