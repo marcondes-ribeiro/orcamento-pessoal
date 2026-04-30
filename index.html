@@ -3313,8 +3313,8 @@ function loadData(){
   }();
   Object.keys(d).forEach(k=>{ if(DATA[k]===undefined||DATA[k]===null) DATA[k]=d[k]; });
   if(!DATA.config) DATA.config=d.config;
-  ['nome','rendaMensal','diaFechamento','driveDismissed'].forEach(k=>{
-    if(DATA.config[k]===undefined) DATA.config[k]=d.config[k];
+  ['nome','rendaMensal','diaFechamento','driveDismissed','googleClientId','driveConnected'].forEach(k=>{
+    if(DATA.config[k]===undefined) DATA.config[k]=d.config[k]!==undefined?d.config[k]:(k==='googleClientId'?'':k==='driveConnected'?false:d.config[k]);
   });
 }
 
@@ -3534,7 +3534,30 @@ async function restoreFromGDrive(){
     try{ parsed = JSON.parse(text); } catch(e){ return showToast('❌ Arquivo de backup inválido.','var(--coral)'); }
     if(!confirm('Restaurar backup do Drive? Os dados atuais serão substituídos.')) return;
     DATA = parsed;
-    if(!Array.isArray(DATA.previsoes)) DATA.previsoes=[];
+    // ── Guardas de migração: garante arrays válidos para todas as chaves
+    // (necessário ao restaurar backups gerados por versões anteriores do app)
+    if(!Array.isArray(DATA.contas))           DATA.contas=[];
+    if(!Array.isArray(DATA.movimentacoes))    DATA.movimentacoes=[];
+    if(!Array.isArray(DATA.pagar))            DATA.pagar=[];
+    if(!Array.isArray(DATA.receber))          DATA.receber=[];
+    if(!Array.isArray(DATA.gastosCartao))     DATA.gastosCartao=[];
+    if(!Array.isArray(DATA.objetivos))        DATA.objetivos=[];
+    if(!Array.isArray(DATA.tipos))            DATA.tipos=[];
+    if(!Array.isArray(DATA.subTipos))         DATA.subTipos=[];
+    if(!Array.isArray(DATA.categoriasCartao)) DATA.categoriasCartao=[];
+    if(!Array.isArray(DATA.metasGasto))       DATA.metasGasto=[];
+    if(!Array.isArray(DATA.historicoFatura))  DATA.historicoFatura=[];
+    if(!Array.isArray(DATA.auditoria))        DATA.auditoria=[];
+    if(!Array.isArray(DATA.terceiros))        DATA.terceiros=[];
+    if(!Array.isArray(DATA.movTerceiros))     DATA.movTerceiros=[];
+    if(!Array.isArray(DATA.previsoes))        DATA.previsoes=[];
+    if(!Array.isArray(DATA.transferencias))   DATA.transferencias=[];
+    if(!DATA.config || typeof DATA.config !== 'object') DATA.config={};
+    if(DATA.config.nome          === undefined) DATA.config.nome='';
+    if(DATA.config.rendaMensal   === undefined) DATA.config.rendaMensal=0;
+    if(DATA.config.diaFechamento === undefined) DATA.config.diaFechamento=15;
+    if(DATA.config.driveDismissed=== undefined) DATA.config.driveDismissed=false;
+    if(DATA.config.googleClientId=== undefined) DATA.config.googleClientId='';
     save(true);
     if(typeof loadData==='function') loadData();
     navigateTo('dashboard');
@@ -5571,9 +5594,13 @@ function toggleNotif(){ document.getElementById('notifPanel').classList.toggle('
 // EXPORTAÇÃO
 // ================================================================
 function exportBackup(){
-  const nome='flowmind_v4_backup_'+new Date().toISOString().split('T')[0]+'.json';
+  const hoje2=new Date().toISOString().split('T')[0];
+  const nomeUsuario=(DATA.config.nome||'nexus').replace(/\s+/g,'-').toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const nome='nexus_backup_'+nomeUsuario+'_'+hoje2+'.json';
+  const total=DATA.contas.length+DATA.movimentacoes.length+DATA.pagar.length+DATA.receber.length+
+    DATA.gastosCartao.length+DATA.objetivos.length+(DATA.previsoes||[]).length+(DATA.transferencias||[]).length+(DATA.terceiros||[]).length;
   dlBlob(JSON.stringify(DATA,null,2),nome,'application/json');
-  toast('☁ Backup baixado');
+  toast('✅ Backup salvo: '+nome+' ('+total+' registros)');
 }
 function importBackup(){
   const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
@@ -5583,21 +5610,106 @@ function importBackup(){
     r.onload=function(e){
       try{
         const d=JSON.parse(e.target.result);
-        if(!confirm('Substituir todos os dados pelo arquivo importado?')) return;
-        DATA=d; save(); navigateTo('dashboard'); toast('✅ Dados importados');
-      }catch(err){ toast('❌ Arquivo inválido','var(--coral)'); }
+
+        // ── Validação estrutural mínima: rejeita arquivos que claramente não são backups
+        const camposEsperados=['contas','movimentacoes','pagar','receber'];
+        const validos=camposEsperados.filter(function(k){ return Array.isArray(d[k]); });
+        if(validos.length < 2){
+          return toast('❌ Arquivo não reconhecido como backup válido do sistema','var(--coral)');
+        }
+
+        if(!confirm(
+          'Substituir todos os dados pelo arquivo importado?\n\n' +
+          'Contas: '          +(d.contas||[]).length+'\n'+
+          'Movimentações: '   +(d.movimentacoes||[]).length+'\n'+
+          'A Pagar: '         +(d.pagar||[]).length+'\n'+
+          'A Receber: '       +(d.receber||[]).length+'\n'+
+          'Cartão (gastos): ' +(d.gastosCartao||[]).length+'\n'+
+          'Objetivos: '       +(d.objetivos||[]).length+'\n'+
+          'Previsões: '       +(d.previsoes||[]).length+'\n'+
+          'Transferências: '  +(d.transferencias||[]).length+'\n'+
+          'Terceiros: '       +(d.terceiros||[]).length
+        )) return;
+
+        // ── Substituição + migrações para backups de versões anteriores
+        DATA = d;
+
+        // Campos que podem estar ausentes em backups antigos — garantir arrays válidos
+        if(!Array.isArray(DATA.contas))           DATA.contas=[];
+        if(!Array.isArray(DATA.movimentacoes))    DATA.movimentacoes=[];
+        if(!Array.isArray(DATA.pagar))            DATA.pagar=[];
+        if(!Array.isArray(DATA.receber))          DATA.receber=[];
+        if(!Array.isArray(DATA.gastosCartao))     DATA.gastosCartao=[];
+        if(!Array.isArray(DATA.objetivos))        DATA.objetivos=[];
+        if(!Array.isArray(DATA.tipos))            DATA.tipos=[];
+        if(!Array.isArray(DATA.subTipos))         DATA.subTipos=[];
+        if(!Array.isArray(DATA.categoriasCartao)) DATA.categoriasCartao=[];
+        if(!Array.isArray(DATA.metasGasto))       DATA.metasGasto=[];
+        if(!Array.isArray(DATA.historicoFatura))  DATA.historicoFatura=[];
+        if(!Array.isArray(DATA.auditoria))        DATA.auditoria=[];
+        if(!Array.isArray(DATA.terceiros))        DATA.terceiros=[];
+        if(!Array.isArray(DATA.movTerceiros))     DATA.movTerceiros=[];
+        if(!Array.isArray(DATA.previsoes))        DATA.previsoes=[];
+        if(!Array.isArray(DATA.transferencias))   DATA.transferencias=[];
+
+        // config: garantir objeto e todos os campos esperados
+        if(!DATA.config || typeof DATA.config !== 'object') DATA.config={};
+        if(DATA.config.nome          === undefined) DATA.config.nome='';
+        if(DATA.config.rendaMensal   === undefined) DATA.config.rendaMensal=0;
+        if(DATA.config.diaFechamento === undefined) DATA.config.diaFechamento=15;
+        if(DATA.config.driveDismissed=== undefined) DATA.config.driveDismissed=false;
+        if(DATA.config.googleClientId=== undefined) DATA.config.googleClientId='';
+
+        // Migração legado: transferências internas antigas (movimentacoes com transferenciaId)
+        loadData();
+
+        save(true);
+        navigateTo('dashboard');
+        const total=(DATA.contas.length+DATA.movimentacoes.length+DATA.pagar.length+DATA.receber.length);
+        toast('✅ Backup importado com sucesso! ('+total+' registros carregados)');
+      }catch(err){
+        console.error('Erro ao importar backup:', err);
+        toast('❌ Arquivo inválido ou corrompido','var(--coral)');
+      }
     };
     r.readAsText(f);
   };
   inp.click();
 }
 function exportCSV(){
+  const esc2=v=>'"'+(String(v||'').replace(/"/g,'""'))+'"';
   let csv='Modulo,ID,Data,Descricao,Tipo,Subtipo,Valor,Status\n';
-  DATA.pagar.forEach(p=>{csv+=`PAGAR,${p.id},${p.vencimento},"${(p.descricao||'').replace(/"/g,'""')}","${(p.tipo||'').replace(/"/g,'""')}","${(p.subtipo||'').replace(/"/g,'""')}",${p.valor},${p.status}\n`;});
-  DATA.receber.forEach(r=>{csv+=`RECEBER,${r.id},${r.vencimento},"${(r.descricao||'').replace(/"/g,'""')}","${(r.tipo||'').replace(/"/g,'""')}","${(r.subtipo||'').replace(/"/g,'""')}",${r.valor},${r.status}\n`;});
-  DATA.movimentacoes.forEach(m=>{csv+=`MOV,${m.id},${m.data},"${(m.descricao||'').replace(/"/g,'""')}","${(m.tipo||'').replace(/"/g,'""')}","${(m.subtipo||'').replace(/"/g,'""')}",${m.tipoOp==='RECEITA'?m.valor:-m.valor},${m.status||'ATIVO'}\n`;});
-  dlBlob(csv,'flowmind_v4_export.csv','text/csv');
-  toast('📊 CSV exportado');
+  // A Pagar
+  DATA.pagar.forEach(p=>{csv+='PAGAR,'+esc2(p.id)+','+esc2(p.vencimento)+','+esc2(p.descricao)+','+esc2(p.tipo)+','+esc2(p.subtipo)+','+p.valor+','+p.status+'\n';});
+  // A Receber
+  DATA.receber.forEach(r=>{csv+='RECEBER,'+esc2(r.id)+','+esc2(r.vencimento)+','+esc2(r.descricao)+','+esc2(r.tipo)+','+esc2(r.subtipo)+','+r.valor+','+r.status+'\n';});
+  // Movimentações (extrato de contas)
+  DATA.movimentacoes.forEach(m=>{csv+='MOV,'+esc2(m.id)+','+esc2(m.data)+','+esc2(m.descricao)+','+esc2(m.tipo)+','+esc2(m.subtipo)+','+(m.tipoOp==='RECEITA'?m.valor:-m.valor)+','+(m.status||'ATIVO')+'\n';});
+  // Cartão — gastos individuais
+  (DATA.gastosCartao||[]).forEach(g=>{
+    var cat=(DATA.categoriasCartao||[]).find(function(c){return c.id===g.categoriaId;});
+    csv+='CARTAO,'+esc2(g.id)+','+esc2(g.data||g.ano+'-'+pad(g.mes)+'-01')+','+esc2(g.descricao)+','+esc2(cat?cat.nome:g.categoriaId)+',,'+g.valor+','+(g.status||'pendente')+'\n';
+  });
+  // Objetivos financeiros
+  (DATA.objetivos||[]).forEach(o=>{csv+='OBJETIVO,'+esc2(o.id)+','+esc2(o.dataLimite||'')+','+esc2(o.nome)+',,,'+(o.acumulado||0)+'/'+o.valorAlvo+','+esc2(o.status||'EM ANDAMENTO')+'\n';});
+  // Previsões orçamentárias
+  (DATA.previsoes||[]).forEach(p=>{csv+='PREVISAO,'+esc2(p.id)+','+esc2(p.mesAno)+','+esc2(p.tipoNome)+',,,'+(p.valorPrevisto||0)+',PREVISTO\n';});
+  // Transferências internas
+  (DATA.transferencias||[]).filter(function(t){return t.status!=='ANULADO';}).forEach(t=>{
+    var ori=(DATA.contas||[]).find(function(c){return c.id===t.contaOrigemId;});
+    var dst=(DATA.contas||[]).find(function(c){return c.id===t.contaDestinoId;});
+    csv+='TRANSFERENCIA,'+esc2(t.id)+','+esc2(t.data)+','+esc2(t.descricao||'Transferência interna')+','+esc2((ori?ori.nome:'?')+' → '+(dst?dst.nome:'?'))+',,'+t.valor+','+esc2(t.status||'ATIVO')+'\n';
+  });
+  // Terceiros (contas a receber de pessoas físicas/jurídicas)
+  (DATA.movTerceiros||[]).forEach(m=>{
+    var trc=(DATA.terceiros||[]).find(function(x){return x.id===m.terceiroId;});
+    csv+='TERCEIRO,'+esc2(m.id)+','+esc2(m.data)+','+esc2(m.descricao)+','+esc2(trc?trc.nome:'?')+',,'+( m.tipo==='ENTRADA'?m.valor:-m.valor)+','+(m.status||'ATIVO')+'\n';
+  });
+  const total=DATA.pagar.length+DATA.receber.length+DATA.movimentacoes.length+
+    (DATA.gastosCartao||[]).length+(DATA.objetivos||[]).length+(DATA.previsoes||[]).length+
+    (DATA.transferencias||[]).length+(DATA.movTerceiros||[]).length;
+  dlBlob(csv,'nexus_export_'+new Date().toISOString().split('T')[0]+'.csv','text/csv');
+  toast('📊 CSV exportado ('+total+' registros, todos os módulos)');
 }
 function dlBlob(content,filename,mime){
   const blob=new Blob([content],{type:mime});
@@ -7503,6 +7615,14 @@ if(typeof modalGasto !== 'undefined'){
       DATA.gastosCartao.forEach(function(g){
         if(g.mes===m2&&g.ano===a2&&g.status!=='faturado') g.status='faturado';
       });
+      // ── CORREÇÃO DUPLICAÇÃO: remover o lançamento incremental '💳 Cartão — YYYY-MM'
+      // criado automaticamente pelo modalNovoGasto ao adicionar gastos.
+      // Esse lançamento é um acumulador provisório; o lançamento definitivo abaixo o substitui.
+      var mesAnoKey=a2+'-'+pad(m2);
+      DATA.pagar=DATA.pagar.filter(function(p){
+        return !(p.tipo==='CARTÃO' && p.descricao==='💳 Cartão — '+mesAnoKey);
+      });
+      // Lançamento definitivo da fatura (único, com descrição e vencimento confirmados)
       DATA.pagar.push({id:genId('PG'),vencimento:venc,descricao:desc,tipo:'CARTÃO',categoria:'Cartão de Crédito',valor:total,status:'PENDENTE',origemCartao:true,criadoEm:new Date().toISOString()});
       save(true);
       renderCartao();
@@ -7851,7 +7971,7 @@ window.excluirGastoCartao = function(id){
       '<tr style="height:8px;"><td colspan="2"></td></tr>'+
       '<tr style="background:rgba(56,205,255,.04);"><td style="font-weight:700;color:var(--sky);">📥 A Receber até '+fmtD(dt)+'</td><td class="mono c-emerald" style="text-align:right;font-weight:700;">+'+fmtR(aRec)+'</td></tr>'+
       '<tr style="background:rgba(255,77,106,.04);"><td style="font-weight:700;color:var(--coral);">📤 A Pagar até '+fmtD(dt)+'</td><td class="mono c-coral" style="text-align:right;font-weight:700;">-'+fmtR(aPag)+'</td></tr>'+
-      '<tr style="background:rgba(155,109,255,.06);"><td style="font-weight:700;color:var(--violet);">⚖️ Compromissos Líquidos</td><td class="mono" style="text-align:right;font-weight:700;color:'+(compromissos>=0?'var(--emerald)':'var(--coral)');'">'+(compromissos>=0?'+':'')+fmtR(compromissos)+'</td></tr>'+
+      '<tr style="background:rgba(155,109,255,.06);"><td style="font-weight:700;color:var(--violet);">⚖️ Compromissos Líquidos</td><td class="mono" style="text-align:right;font-weight:700;color:'+(compromissos>=0?'var(--emerald)':'var(--coral)')+'">'+(compromissos>=0?'+':'')+fmtR(compromissos)+'</td></tr>'+
       '<tr style="background:rgba(255,122,0,.06);border-top:2px solid var(--orange-border);"><td style="font-weight:800;color:var(--orange);font-size:14px;">🎯 Saldo Projetado</td><td class="mono" style="text-align:right;font-weight:800;font-size:18px;color:'+(saldoProj>=0?'var(--emerald)':'var(--coral)')+';">'+fmtR(saldoProj)+'</td></tr>'+
       '</table></div>'+
       (saldoProj<0?'<div class="info-block danger" style="margin-top:12px;">⚠️ <strong>Saldo projetado negativo!</strong> Revise seus compromissos ou aumente receitas.</div>':
@@ -8548,6 +8668,201 @@ console.log('  ✓ [v7-6] Simulador de Compras (à vista / parcelado)');
 console.log('  ✓ [v7-7] Novos cards de relatório no grid');
 console.log('  ✓ [v7-8] Simulador acessível via sidebar');
 console.log('  ✓ [v7-9] Padronização visual de tabelas (sombras, totais, cores)');
+
+// ================================================================
+// ★ NEXUS ONE v8.0 — CORREÇÕES E MELHORIAS (BUG FIX RELEASE)
+// ================================================================
+// [BF-1] CARTÃO → A PAGAR: elimina duplicação ao Zerar Fatura
+//        O lançamento incremental '💳 Cartão — YYYY-MM' (criado automaticamente
+//        ao adicionar gastos) é removido antes de registrar o lançamento
+//        definitivo da fatura. Apenas UM lançamento permanece em A Pagar.
+// [BF-2] RELATÓRIO Previsão de Saldo: corrige linha "Saldo Projetado" ausente
+//        Causa: ponto-e-vírgula espúrio dentro da concatenação de string
+//        na linha de "Compromissos Líquidos" interrompia o innerHTML
+//        prematuramente. Removido o ; incorreto — todas as linhas aparecem.
+// [BF-3] MÓDULO CONTAS: paginação no extrato de movimentações (10 por página)
+//        Implementado no padrão dos módulos A Pagar e A Receber.
+// ================================================================
+
+// ================================================================
+// [BF-3] PAGINAÇÃO — MÓDULO CONTAS (extrato de movimentações)
+// ================================================================
+(function patchContasPaginacao(){
+  // Estado de paginação por conta (resetado ao trocar de conta)
+  var _pagContas = 1;
+  var _contaSelAnterior = null;
+
+  // Expõe função de troca de página globalmente
+  window.setPagContas = function(p){
+    _pagContas = p;
+    if(typeof contaSel !== 'undefined') renderContaDetail(contaSel);
+  };
+
+  // Guarda referência à função original
+  var _origRenderContaDetail = renderContaDetail;
+
+  // Sobrescreve renderContaDetail com versão paginada
+  window.renderContaDetail = renderContaDetail = function(id){
+    // Resetar para página 1 ao trocar de conta
+    if(id !== _contaSelAnterior){
+      _pagContas = 1;
+      _contaSelAnterior = id;
+    }
+
+    var c = DATA.contas.find(function(x){ return x.id===id; });
+    if(!c) return;
+
+    var saldo = saldoConta(id);
+    var showAnul = window._showAnul || false;
+    var showTrf  = window._showTrf  || false;
+
+    // Lista completa de movimentações
+    var movsAll = DATA.movimentacoes
+      .filter(function(m){ return m.contaId===id && m.tipo!=='Transferência'; })
+      .sort(function(a,b){ return b.data.localeCompare(a.data); });
+    var movsFull = showAnul ? movsAll : movsAll.filter(function(m){ return m.status!=='ANULADO'; });
+
+    // Transferências (sem paginação — geralmente poucos registros)
+    var trfsOut = (DATA.transferencias||[]).filter(function(t){ return t.contaOrigemId===id  && t.status!=='ANULADO'; });
+    var trfsIn  = (DATA.transferencias||[]).filter(function(t){ return t.contaDestinoId===id && t.status!=='ANULADO'; });
+    var nTrfs   = trfsOut.length + trfsIn.length;
+
+    // Paginação
+    var totalReg  = movsFull.length;
+    var totalPags = Math.max(1, Math.ceil(totalReg / _PAGE_SIZE));
+    if(_pagContas > totalPags) _pagContas = totalPags;
+    var offset = (_pagContas - 1) * _PAGE_SIZE;
+    var movsPag = movsFull.slice(offset, offset + _PAGE_SIZE);
+
+    // Helper: badge de status de transferência
+    function trfBadge(label){
+      return '<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.15);color:var(--violet);border:1px solid rgba(155,109,255,.3);font-weight:700;">'+label+'</span>';
+    }
+
+    // Linhas de movimentações paginadas
+    var rowsMovs = '';
+    if(!movsPag.length){
+      rowsMovs = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhuma movimentação</td></tr>';
+    } else {
+      movsPag.forEach(function(m){
+        var isAnul  = m.status === 'ANULADO';
+        var rowCls  = isAnul ? 'row-anulado' : '';
+        var badge   = isAnul
+          ? '<span class="badge badge-anulado">ANULADO</span>'
+          : '<span class="badge badge-ativo">ATIVO</span>';
+        var cor   = m.tipoOp === 'RECEITA' ? 'c-emerald' : 'c-coral';
+        var sinal = m.tipoOp === 'RECEITA' ? '+' : '-';
+        var subtipoHtml = m.subtipo
+          ? '<span class="subtipo-tag" style="'+(m.tipoOp==='RECEITA'?'background:rgba(0,229,160,.1);color:var(--emerald);border-color:rgba(0,229,160,.2);':'')+'">'+esc(m.subtipo)+'</span>'
+          : '<span style="color:var(--text4);">—</span>';
+        rowsMovs +=
+          '<tr class="'+rowCls+'">' +
+          '<td style="white-space:nowrap;">'+fmtD(m.data)+'</td>' +
+          '<td><span class="badge '+(m.tipoOp==='RECEITA'?'bg-emerald':'bg-coral')+'">'+m.tipoOp+'</span></td>' +
+          '<td style="font-weight:500;">'+esc(m.descricao||'—')+'</td>' +
+          '<td style="font-size:11px;color:var(--text2);">'+esc(m.tipo||'—')+'</td>' +
+          '<td style="font-size:10px;">'+subtipoHtml+'</td>' +
+          '<td class="mono '+cor+'" style="text-align:right;font-weight:700;">'+sinal+fmtR(m.valor)+'</td>' +
+          '<td>'+badge+'</td>' +
+          '<td style="white-space:nowrap;">' +
+            (!isAnul
+              ? '<button class="btn btn-xs btn-edit" onclick="editarMovimentacao(\''+m.id+'\')">✏</button> ' +
+                '<button class="btn btn-xs btn-amber" onclick="anularMovimentacao(\''+m.id+'\')" title="Anular">⊘</button>'
+              : '') +
+            ' <button class="btn btn-xs btn-danger" onclick="excluirMovimentacao(\''+m.id+'\')">🗑</button>' +
+          '</td>' +
+          '</tr>';
+      });
+    }
+
+    // Linhas de transferências (exibidas após movimentações quando toggleado)
+    var rowsTrf = '';
+    if(showTrf){
+      trfsOut.forEach(function(t){
+        var dc = DATA.contas.find(function(x){ return x.id===t.contaDestinoId; });
+        rowsTrf +=
+          '<tr style="background:rgba(155,109,255,.04);">' +
+          '<td style="white-space:nowrap;">'+fmtD(t.data)+'</td>' +
+          '<td>'+trfBadge('🔁 TRANSF.')+'</td>' +
+          '<td style="font-weight:500;color:var(--violet);">→ '+(dc?esc(dc.emoji||'')+' '+esc(dc.nome):'?')+' — '+esc(t.descricao||'')+'</td>' +
+          '<td style="font-size:11px;color:var(--text3);">Transferência Interna</td>' +
+          '<td><span style="color:var(--text4);">—</span></td>' +
+          '<td class="mono c-coral" style="text-align:right;font-weight:700;">-'+fmtR(t.valor)+'</td>' +
+          '<td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.08);color:var(--violet);">INTERNO</span></td>' +
+          '<td><button class="btn btn-xs btn-danger" onclick="excluirTrf(\''+t.id+'\')">🗑</button></td>' +
+          '</tr>';
+      });
+      trfsIn.forEach(function(t){
+        var oc = DATA.contas.find(function(x){ return x.id===t.contaOrigemId; });
+        rowsTrf +=
+          '<tr style="background:rgba(0,229,160,.03);">' +
+          '<td style="white-space:nowrap;">'+fmtD(t.data)+'</td>' +
+          '<td>'+trfBadge('🔁 TRANSF.')+'</td>' +
+          '<td style="font-weight:500;color:var(--emerald);">← '+(oc?esc(oc.emoji||'')+' '+esc(oc.nome):'?')+' — '+esc(t.descricao||'')+'</td>' +
+          '<td style="font-size:11px;color:var(--text3);">Transferência Interna</td>' +
+          '<td><span style="color:var(--text4);">—</span></td>' +
+          '<td class="mono c-emerald" style="text-align:right;font-weight:700;">+'+fmtR(t.valor)+'</td>' +
+          '<td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(155,109,255,.08);color:var(--violet);">INTERNO</span></td>' +
+          '<td>—</td>' +
+          '</tr>';
+      });
+    }
+
+    // Contador info da paginação (exibido acima da tabela)
+    var infoCount = totalReg > 0
+      ? '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);border-radius:8px 8px 0 0;">' +
+          '<span>Exibindo '+(offset+1)+' – '+Math.min(offset+_PAGE_SIZE, totalReg)+' de '+totalReg+' movimentações</span>' +
+          '<span>Página '+_pagContas+' / '+totalPags+'</span>' +
+        '</div>'
+      : '';
+
+    // HTML completo do detalhe
+    document.getElementById('contaDetail').innerHTML =
+      '<div class="card" style="margin-bottom:16px;">' +
+        '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">' +
+          '<div style="font-size:36px;">'+esc(c.emoji||'🏦')+'</div>' +
+          '<div style="flex:1;">' +
+            '<div style="font-size:18px;font-weight:800;">'+esc(c.nome)+'</div>' +
+            '<div style="font-size:11px;color:var(--text3);">'+esc(c.tipo||'')+' · Saldo inicial: '+fmtR(c.saldoInicial)+'</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:12px;color:var(--text3);margin-bottom:2px;">Saldo Atual</div>' +
+            '<div class="mono '+(saldo>=0?'c-emerald':'c-coral')+'" style="font-size:26px;font-weight:800;">'+fmtR(saldo)+'</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+            '<button class="btn btn-xs btn-edit" onclick="editarConta(\''+id+'\')">✏ Editar</button>' +
+            '<button class="btn btn-xs btn-danger" onclick="excluirConta(\''+id+'\')">🗑 Excluir</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">' +
+        '<div class="sec-title">Extrato</div>' +
+        '<span class="show-anulados-toggle" onclick="toggleAnulados()">'+(showAnul?'Ocultar anulados':'Mostrar anulados')+'</span>' +
+        '<span class="show-anulados-toggle" onclick="toggleTransferencias()" ' +
+          'style="background:'+(showTrf?'rgba(155,109,255,.15)':'rgba(155,109,255,.05)')+';color:var(--violet);border-color:rgba(155,109,255,.3);">' +
+          '🔁 '+(showTrf?'Ocultar':'Mostrar')+' transferências ('+nTrfs+')' +
+        '</span>' +
+      '</div>' +
+
+      infoCount +
+      '<div class="table-wrap">' +
+        '<table>' +
+          '<tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Subtipo</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>' +
+          rowsMovs +
+          rowsTrf +
+        '</table>' +
+      '</div>' +
+      renderPaginacao(totalReg, _pagContas, 'setPagContas', 'contaDetail');
+  };
+
+  console.log('  ✓ [BF-3] Contas: paginação no extrato ('+_PAGE_SIZE+' por página)');
+})();
+
+console.log('⬡ Nexus One v8.0 — Bug Fix Release');
+console.log('  ✓ [BF-1] Cartão → A Pagar: duplicação ao Zerar Fatura eliminada');
+console.log('  ✓ [BF-2] Relatório Previsão de Saldo: linha Saldo Projetado restaurada');
+console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentações');
 </script>
 </body>
 </html>
