@@ -9918,5 +9918,357 @@ console.log('  ✓ [BF-1] Cartão → A Pagar: duplicação ao Zerar Fatura elim
 console.log('  ✓ [BF-2] Relatório Previsão de Saldo: linha Saldo Projetado restaurada');
 console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentações');
 </script>
+<script>
+// ================================================================
+// Nexus One v9.0 - camada final de ajustes cirurgicos solicitados.
+// Escopo restrito: Simulador, Cartao, Relatorios, Objetivos, Previsoes, A Receber.
+// ================================================================
+(function nexusOneV9(){
+  function money(v){ return Math.round((parseFloat(v)||0)*100)/100; }
+  function ma(m,a){ return a+'-'+pad(m); }
+  function parseMA(v){ var p=(v||ma(mes(),ano())).split('-'); return {a:parseInt(p[0],10)||ano(),m:parseInt(p[1],10)||mes()}; }
+  function nextFromDate(dt){ var d=dt?new Date(dt+'T12:00:00'):new Date(); var m=d.getMonth()+2,a=d.getFullYear(); if(m>12){m=1;a++;} return {m:m,a:a}; }
+  function labelMA(m,a){ return nomeMesFull(m)+'/'+a; }
+  function activeBill(){ DATA.cartaoCicloAtual=DATA.cartaoCicloAtual||{mes:mes(),ano:ano()}; return {m:parseInt(DATA.cartaoCicloAtual.mes,10)||mes(),a:parseInt(DATA.cartaoCicloAtual.ano,10)||ano()}; }
+  function ensureV9(){
+    DATA.historicoFatura=Array.isArray(DATA.historicoFatura)?DATA.historicoFatura:[];
+    DATA.gastosCartao=Array.isArray(DATA.gastosCartao)?DATA.gastosCartao:[];
+    DATA.receber=Array.isArray(DATA.receber)?DATA.receber:[];
+    DATA.previsoes=Array.isArray(DATA.previsoes)?DATA.previsoes:[];
+    DATA.objetivos=Array.isArray(DATA.objetivos)?DATA.objetivos:[];
+    DATA.cartaoCicloAtual=DATA.cartaoCicloAtual||{mes:mes(),ano:ano()};
+    // Compatibilidade: metadados novos sao adicionados sem migracao destrutiva.
+    DATA.gastosCartao.forEach(function(g){ if(!g.status) g.status='pendente'; });
+    DATA.receber.forEach(function(r){ if(r.valorOriginal==null) r.valorOriginal=r.valor||0; if(!Array.isArray(r.historicoRecebimentos)) r.historicoRecebimentos=[]; });
+  }
+  function injectCss(){
+    if(document.getElementById('nexusV9Css')) return;
+    var s=document.createElement('style'); s.id='nexusV9Css';
+    s.textContent='.n9bar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px}.n9grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px}.n9metric{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px}.n9lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:800;margin-bottom:6px}.n9val{font-family:DM Mono,monospace;font-size:20px;font-weight:900}.n9note{font-size:11px;color:var(--text3);line-height:1.45;margin-top:8px}.n9month{padding:9px 12px;background:rgba(56,205,255,.08);border-top:1px solid var(--border);font-weight:800;color:var(--sky)}';
+    document.head.appendChild(s);
+  }
+  ensureV9(); injectCss();
+
+  function cardBillMetrics(){
+    var b=activeBill();
+    var hist=[].concat(DATA.historicoFatura||[]).sort(function(x,y){return String(y.dataFechamento||'').localeCompare(String(x.dataFechamento||''));});
+    var prev=hist[0]||null;
+    var current=DATA.gastosCartao.filter(function(g){return g.mes===b.m&&g.ano===b.a&&g.status!=='faturado';}).reduce(function(s,g){return s+(g.valor||0);},0);
+    var nx=nextFromDate(prev&&prev.dataFechamentoReal?prev.dataFechamentoReal:hoje());
+    var next=DATA.gastosCartao.filter(function(g){return g.mes===nx.m&&g.ano===nx.a&&g.status!=='faturado';}).reduce(function(s,g){return s+(g.valor||0);},0);
+    return {b:b,prev:prev,current:current,nx:nx,next:next};
+  }
+
+  window.renderCartao=function(){
+    ensureV9();
+    var grid=document.getElementById('catGrid'); if(!grid) return;
+    var resumo=document.getElementById('cartaoResumo'), x=cardBillMetrics(), b=x.b;
+    var limit=(DATA.categoriasCartao||[]).reduce(function(s,c){return s+(c.limite||0);},0);
+    var top=document.getElementById('cartaoInfoBar');
+    if(!top){ top=document.createElement('div'); top.id='cartaoInfoBar'; grid.parentNode.insertBefore(top,grid); }
+    // Card de resumo de faturas: recalculado a cada render/alteracao de lancamentos.
+    top.innerHTML='<div class="n9grid">'+
+      '<div class="n9metric"><div class="n9lbl">Fatura ativa</div><div class="n9val c-sky">Fatura Atual</div><div class="n9note">'+labelMA(b.m,b.a)+'</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Fatura Anterior</div><div class="n9val c-amber">'+fmtR(x.prev?x.prev.total:0)+'</div><div class="n9note">'+(x.prev?labelMA(x.prev.mes,x.prev.ano):'Sem fatura encerrada')+'</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Fatura Atual</div><div class="n9val c-emerald">'+fmtR(x.current)+'</div><div class="n9note">Ciclo em aberto</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Proxima Fatura</div><div class="n9val c-violet">'+fmtR(x.next)+'</div><div class="n9note">'+labelMA(x.nx.m,x.nx.a)+'</div></div></div>';
+    grid.innerHTML=(DATA.categoriasCartao||[]).map(function(c){
+      var v=DATA.gastosCartao.filter(function(g){return g.categoriaId===c.id&&g.mes===b.m&&g.ano===b.a&&g.status!=='faturado';}).reduce(function(s,g){return s+(g.valor||0);},0);
+      var pct=c.limite>0?v/c.limite*100:0;
+      return '<div class="cat-card"><button class="cat-edit-btn-h" onclick="editarMesCatCartao(\''+c.id+'\')">Edit</button><div class="cat-emoji">'+esc(c.emoji||'')+'</div><div class="cat-name">'+esc(c.nome)+'</div><div class="cat-val '+(pct>=100?'c-coral':pct>=80?'c-amber':'c-text')+'">'+fmtR(v)+'</div><div class="progress" style="margin-top:8px;"><div class="progress-fill '+(pct>=100?'pf-coral':pct>=80?'pf-amber':'pf-emerald')+'" style="width:'+Math.min(pct,100)+'%"></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;">'+(c.limite>0?pct.toFixed(0)+'% de '+fmtR(c.limite):'Sem limite')+'</div></div>';
+    }).join('')||'<div class="empty" style="grid-column:1/-1;"><div class="empty-title">Nenhuma categoria</div></div>';
+    var h='<table><tr><th>Categoria</th><th style="text-align:right;">Fatura Atual</th><th style="text-align:right;">Limite</th><th style="text-align:right;">Diferenca</th><th>Status</th><th>Acoes</th></tr>';
+    (DATA.categoriasCartao||[]).forEach(function(c){
+      var v=DATA.gastosCartao.filter(function(g){return g.categoriaId===c.id&&g.mes===b.m&&g.ano===b.a&&g.status!=='faturado';}).reduce(function(s,g){return s+(g.valor||0);},0);
+      var diff=c.limite>0?c.limite-v:null, pct=c.limite>0?v/c.limite*100:0;
+      h+='<tr><td>'+esc(c.emoji||'')+' '+esc(c.nome)+'</td><td class="mono c-amber" style="text-align:right;">'+fmtR(v)+'</td><td class="mono" style="text-align:right;">'+(c.limite?fmtR(c.limite):'-')+'</td><td class="mono" style="text-align:right;color:'+(diff==null?'var(--text3)':diff>=0?'var(--emerald)':'var(--coral)')+';">'+(diff==null?'-':fmtR(diff))+'</td><td>'+(pct>=100?'<span class="badge bg-coral">Ultrapassado</span>':pct>=80?'<span class="badge bg-amber">Atencao</span>':'<span class="badge bg-emerald">OK</span>')+'</td><td><button class="btn btn-xs btn-edit" onclick="editarMesCatCartao(\''+c.id+'\')">Editar</button></td></tr>';
+    });
+    h+='<tr class="tr-totais"><td>Total</td><td class="mono c-amber" style="text-align:right;">'+fmtR(x.current)+'</td><td class="mono" style="text-align:right;">'+fmtR(limit)+'</td><td class="mono" style="text-align:right;">'+fmtR(limit-x.current)+'</td><td colspan="2"></td></tr></table>';
+    if(resumo) resumo.innerHTML=h;
+    if(typeof renderResumoGastosCartao==='function') renderResumoGastosCartao(b.m,b.a);
+  };
+
+  window.modalGasto=function(){
+    ensureV9();
+    var b=activeBill();
+    if(!(DATA.categoriasCartao||[]).length) return showToast('Crie categorias de cartao em Configuracoes','var(--amber)');
+    var h='<div class="info-block">Competencia: <strong>Fatura Atual - '+labelMA(b.m,b.a)+'</strong></div><div class="grid g2" style="gap:12px;margin-bottom:12px;"><div><label>Categoria</label><select id="gCat">'+DATA.categoriasCartao.map(function(c){return '<option value="'+c.id+'">'+esc(c.emoji||'')+' '+esc(c.nome)+'</option>';}).join('')+'</select></div><div><label>Valor R$</label><input id="gVal" type="number" step="0.01"></div></div><div class="grid g2" style="gap:12px;"><div><label>Data do lancamento</label><input id="gData" type="date" value="'+hoje()+'"></div><div><label>Descricao</label><input id="gDesc" placeholder="Opcional"></div></div>';
+    openModal('Novo Gasto - Cartao','',h,function(){
+      var val=money(document.getElementById('gVal').value);
+      if(val<=0) return showToast('Valor invalido','var(--amber)');
+      // Competencia vem da fatura aberta, nao do calendario atual.
+      DATA.gastosCartao.push({id:genId('GC'),categoriaId:document.getElementById('gCat').value,valor:val,data:document.getElementById('gData').value||hoje(),mes:b.m,ano:b.a,descricao:document.getElementById('gDesc').value,status:'pendente',criadoEm:new Date().toISOString()});
+      save(true); renderCartao(); showToast('Gasto registrado na Fatura Atual','var(--emerald)'); closeAllModals();
+    });
+  };
+
+  window.zerarFatura=function(){
+    ensureV9();
+    var b=activeBill(), pend=DATA.gastosCartao.filter(function(g){return g.mes===b.m&&g.ano===b.a&&g.status!=='faturado';});
+    var total=pend.reduce(function(s,g){return s+(g.valor||0);},0);
+    if(total<=0) return showToast('Nenhum gasto pendente na Fatura Atual','var(--amber)');
+    var h='<div class="info-block warn"><strong>Fatura Atual '+labelMA(b.m,b.a)+': '+fmtR(total)+'</strong><br><small>O fechamento preserva historico e abre a proxima competencia pela data real de fechamento.</small></div><div class="grid g2" style="gap:12px;"><div><label>Data real de fechamento</label><input id="zfDataFech" type="date" value="'+hoje()+'"></div><div><label>Vencimento em A Pagar</label><input id="zfVenc" type="date" value="'+(b.a+'-'+pad(b.m)+'-'+pad(DATA.config.diaFechamento||15))+'"></div></div><div style="margin-top:12px;"><label>Descricao</label><input id="zfDesc" value="Fatura '+labelMA(b.m,b.a)+'"></div>';
+    openModal('Zerar Fatura','',h,function(){
+      var fech=document.getElementById('zfDataFech').value||hoje(), venc=document.getElementById('zfVenc').value||fech, desc=document.getElementById('zfDesc').value||('Fatura '+labelMA(b.m,b.a)), fid=genId('FAT');
+      pend.forEach(function(g){g.status='faturado';g.faturaId=fid;});
+      // Historico da fatura guarda competencia e data real, que dirige o proximo ciclo.
+      DATA.historicoFatura.push({id:fid,mes:b.m,ano:b.a,total:total,dataFechamentoReal:fech,dataFechamento:new Date().toISOString(),descricao:desc});
+      DATA.pagar.push({id:genId('PG'),vencimento:venc,descricao:desc,tipo:'CARTAO',categoria:'Cartao de Credito',valor:total,status:'PENDENTE',origemCartao:true,faturaId:fid,criadoEm:new Date().toISOString()});
+      var nx=nextFromDate(fech); DATA.cartaoCicloAtual={mes:nx.m,ano:nx.a};
+      save(true); renderCartao(); showToast('Fatura encerrada. Nova Fatura '+labelMA(nx.m,nx.a)+' criada.','var(--emerald)',4500); closeAllModals();
+    },'Encerrar ciclo e abrir proxima fatura');
+  };
+
+  window.abrirSimulador=function(){
+    var contas=(DATA.contas||[]).map(function(c){return '<option value="'+c.id+'">'+esc(c.emoji||'')+' '+esc(c.nome)+' ('+fmtR(saldoConta(c.id))+')</option>';}).join('');
+    var tipos=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';}).map(function(t){return '<option>'+esc(t.nome)+'</option>';}).join('');
+    var h='<div id="simResult" style="margin-bottom:14px;"></div><div class="grid g2" style="gap:12px;margin-bottom:12px;"><div><label>Valor da compra</label><input type="number" step="0.01" id="simValor" oninput="calcSimulador()"></div><div><label>Data prevista</label><input type="date" id="simData" value="'+hoje()+'" onchange="calcSimulador()"></div></div><div class="grid g2" style="gap:12px;margin-bottom:12px;"><div><label>Conta</label><select id="simConta" onchange="calcSimulador()">'+(contas||'<option value="">Nenhuma conta</option>')+'</select></div><div><label>Pagamento</label><select id="simTipo" onchange="calcSimulador()"><option value="avista">A vista</option><option value="parcelado">Parcelado</option></select></div></div><div class="grid g3" style="gap:12px;margin-bottom:12px;"><div><label>Parcelas</label><input type="number" id="simParcelas" value="3" min="2" max="60" oninput="calcSimulador()"></div><div><label>Juros mensal %</label><input type="number" id="simJuros" value="0" step="0.01" oninput="calcSimulador()"></div><div><label>Entrada R$</label><input type="number" id="simEntrada" value="0" step="0.01" oninput="calcSimulador()"></div></div><div class="grid g2" style="gap:12px;"><div><label>Categoria</label><select id="simCategoria" onchange="calcSimulador()">'+tipos+'</select></div><div><label>Reserva minima R$</label><input type="number" id="simReserva" value="0" step="0.01" oninput="calcSimulador()"></div></div>';
+    openModal('Simulador de Compras','',h,null,''); setTimeout(calcSimulador,80);
+  };
+  window.calcSimulador=function(){
+    var val=money(document.getElementById('simValor')?.value), entrada=money(document.getElementById('simEntrada')?.value), juros=(parseFloat(document.getElementById('simJuros')?.value)||0)/100, tipo=document.getElementById('simTipo')?.value||'avista', parcelas=Math.max(1,parseInt(document.getElementById('simParcelas')?.value,10)||1), contaId=document.getElementById('simConta')?.value||'', reserva=money(document.getElementById('simReserva')?.value), res=document.getElementById('simResult');
+    if(!res) return; if(val<=0){res.innerHTML='<div class="n9note">Informe um valor para simular impacto em saldo, fluxo e parcela.</div>';return;}
+    var base=Math.max(0,val-entrada), total=tipo==='parcelado'?base*Math.pow(1+juros,parcelas):base, parcela=tipo==='parcelado'?total/parcelas:total;
+    var saldoCt=contaId?saldoConta(contaId):0, saldoTot=(DATA.contas||[]).reduce(function(s,c){return s+saldoConta(c.id);},0), rec=(DATA.receber||[]).filter(function(r){return r.status!=='RECEBIDO';}).reduce(function(s,r){return s+(r.valor||0);},0), pag=(DATA.pagar||[]).filter(function(p){return p.status!=='PAGO';}).reduce(function(s,p){return s+(p.valor||0);},0);
+    var impacto=entrada+(tipo==='avista'?base:parcela), proj=saldoTot+rec-pag-impacto, risco=saldoCt-impacto<reserva?'Alto':proj<0?'Atencao':'Viavel';
+    // Simulador: entrada, juros, parcelas e reserva minima melhoram decisao antes da compra.
+    res.innerHTML='<div class="n9grid"><div class="n9metric"><div class="n9lbl">Impacto inicial</div><div class="n9val c-coral">'+fmtR(impacto)+'</div></div><div class="n9metric"><div class="n9lbl">Custo total</div><div class="n9val c-amber">'+fmtR(total+entrada)+'</div><div class="n9note">Juros: '+(juros*100).toFixed(2)+'% a.m.</div></div><div class="n9metric"><div class="n9lbl">Saldo projetado</div><div class="n9val '+(proj>=0?'c-emerald':'c-coral')+'">'+fmtR(proj)+'</div></div><div class="n9metric"><div class="n9lbl">Risco</div><div class="n9val '+(risco==='Viavel'?'c-emerald':risco==='Atencao'?'c-amber':'c-coral')+'">'+risco+'</div><div class="n9note">'+parcelas+'x de '+fmtR(parcela)+'</div></div></div>';
+  };
+
+  window.relFluxoDiario=function(monthKey){
+    var c=document.getElementById('relContent'); if(!c) return;
+    monthKey=monthKey||document.getElementById('n9FluxoMes')?.value||ma(mes(),ano());
+    var p=parseMA(monthKey), days=new Date(p.a,p.m,0).getDate(), rows=[];
+    for(var d=1;d<=days;d++){
+      var ds=monthKey+'-'+pad(d), ent=0,sai=0;
+      // Correcao de exibicao parcial: consolida movimentacoes, receber e pagar do periodo inteiro.
+      ent+=(DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='RECEITA'&&x.status!=='ANULADO'&&x.data===ds;}).reduce(function(s,x){return s+(x.valor||0);},0);
+      sai+=(DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data===ds;}).reduce(function(s,x){return s+(x.valor||0);},0);
+      ent+=(DATA.receber||[]).filter(function(r){return r.status!=='RECEBIDO'&&r.vencimento===ds;}).reduce(function(s,r){return s+(r.valor||0);},0);
+      sai+=(DATA.pagar||[]).filter(function(pg){return pg.status!=='PAGO'&&pg.vencimento===ds;}).reduce(function(s,pg){return s+(pg.valor||0);},0);
+      rows.push({d:d,ds:ds,ent:ent,sai:sai});
+    }
+    var te=rows.reduce(function(s,x){return s+x.ent;},0), ts=rows.reduce(function(s,x){return s+x.sai;},0);
+    c.innerHTML='<div class="adv-report-card"><div class="adv-report-title">Fluxo de Caixa Diario - '+labelMA(p.m,p.a)+'</div><div class="n9bar"><div><label>Mes</label><input type="month" id="n9FluxoMes" value="'+monthKey+'" onchange="relFluxoDiario(this.value)"></div></div><div class="n9grid"><div class="n9metric"><div class="n9lbl">Entradas</div><div class="n9val c-emerald">'+fmtR(te)+'</div></div><div class="n9metric"><div class="n9lbl">Saidas</div><div class="n9val c-coral">'+fmtR(ts)+'</div></div><div class="n9metric"><div class="n9lbl">Saldo</div><div class="n9val '+(te-ts>=0?'c-emerald':'c-coral')+'">'+fmtR(te-ts)+'</div></div></div><canvas id="chartFluxoDiario" height="220"></canvas><div class="table-wrap fluxo-diario-wrap" style="margin-top:14px;"><table><tr><th>Dia</th><th style="text-align:right;">Entradas</th><th style="text-align:right;">Saidas</th><th style="text-align:right;">Saldo</th></tr>'+rows.filter(function(x){return x.ent||x.sai;}).map(function(x){var sd=x.ent-x.sai;return '<tr><td>'+fmtD(x.ds)+'</td><td class="mono c-emerald" style="text-align:right;">'+fmtR(x.ent)+'</td><td class="mono c-coral" style="text-align:right;">'+fmtR(x.sai)+'</td><td class="mono" style="text-align:right;color:'+(sd>=0?'var(--emerald)':'var(--coral)')+';">'+fmtR(sd)+'</td></tr>';}).join('')+'</table></div></div>';
+    setTimeout(function(){ var ctx=document.getElementById('chartFluxoDiario'); if(!ctx||typeof Chart==='undefined') return; if(charts.chartFluxoDiario) charts.chartFluxoDiario.destroy(); var acc=0; charts.chartFluxoDiario=new Chart(ctx,{type:'bar',data:{labels:rows.map(function(x){return pad(x.d);}),datasets:[{label:'Entradas',data:rows.map(function(x){return x.ent;}),backgroundColor:'rgba(0,229,160,.45)'},{label:'Saidas',data:rows.map(function(x){return -x.sai;}),backgroundColor:'rgba(255,77,106,.45)'},{label:'Saldo acum.',data:rows.map(function(x){acc+=x.ent-x.sai;return acc;}),type:'line',borderColor:'var(--orange)',fill:false,tension:.25}]},options:{responsive:true,plugins:{legend:{labels:{color:'#BCC5D8'}}}}}); },60);
+  };
+
+  var oldGerar=window.gerarRelatorio||gerarRelatorio;
+  window.gerarRelatorio=gerarRelatorio=function(id){
+    var c=document.getElementById('relContent'); if(!c) return;
+    if(id==='tipos'||id==='confronto'){
+      var key=document.getElementById('n9RelMes')?.value||ma(mes(),ano()), p=parseMA(key);
+      // Req05: tipos e confronto receberam filtro mensal; objetivos/patrimonio/auditoria permanecem globais por natureza.
+      var h='<div class="n9bar"><div><label>Mes</label><input type="month" id="n9RelMes" value="'+key+'" onchange="gerarRelatorio(\''+id+'\')"></div></div>';
+      if(id==='tipos'){
+        var g={}; (DATA.movimentacoes||[]).filter(function(x){return x.status!=='ANULADO'&&x.data&&x.data.startsWith(key);}).forEach(function(x){var k=(x.tipoOp==='RECEITA'?'RECEITA - ':'DESPESA - ')+(x.tipo||'Outros');g[k]=(g[k]||0)+(x.valor||0);});
+        h+='<div class="sec-header"><span class="sec-title">Analise por Tipo - '+labelMA(p.m,p.a)+'</span><div class="sec-line"></div></div><div class="table-wrap"><table><tr><th>Tipo</th><th style="text-align:right;">Total</th></tr>'+Object.entries(g).sort(function(a,b){return b[1]-a[1];}).map(function(e){return '<tr><td>'+esc(e[0])+'</td><td class="mono '+(e[0].indexOf('RECEITA')===0?'c-emerald':'c-coral')+'" style="text-align:right;">'+fmtR(e[1])+'</td></tr>';}).join('')+'</table></div>';
+      }else{
+        var pg=(DATA.pagar||[]).filter(function(x){return x.vencimento&&x.vencimento.startsWith(key);}).reduce(function(s,x){return s+(x.valor||0);},0), rc=(DATA.receber||[]).filter(function(x){return x.vencimento&&x.vencimento.startsWith(key);}).reduce(function(s,x){return s+(x.valor||0);},0);
+        h+='<div class="grid g3">'+card('A Receber','bg-emerald','RECEITAS',fmtR(rc),'c-emerald','No mes')+card('A Pagar','bg-coral','DESPESAS',fmtR(pg),'c-coral','No mes')+card('Resultado','bg-cyan','SALDO',fmtR(rc-pg),rc-pg>=0?'c-emerald':'c-coral','Receitas - Despesas')+'</div>';
+      }
+      c.innerHTML=h; c.scrollIntoView({behavior:'smooth'}); return;
+    }
+    oldGerar.apply(this,arguments);
+  };
+
+  window.renderObjetivos=function(){
+    ensureV9();
+    var grid=document.getElementById('objGrid'); if(!grid) return;
+    if(!DATA.objetivos.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1;"><div class="empty-title">Nenhum objetivo</div><div class="empty-sub">Crie seu primeiro objetivo financeiro</div></div>';return;}
+    grid.innerHTML=DATA.objetivos.map(function(o){
+      var pct=o.valorAlvo>0?(o.acumulado/o.valorAlvo*100):0, rest=Math.max(0,(o.valorAlvo||0)-(o.acumulado||0)), dr=o.dataLimite?dias(hoje(),o.dataLimite):null, sug=dr&&dr>0&&rest>0?rest/Math.max(1,dr/30):0, st=pct>=100?'META ATINGIDA':dr!==null&&dr<0?'ATRASADO':dr!==null&&dr<=30?'PRAZO CURTO':'EM ANDAMENTO';
+      // UX de objetivos: progresso, alerta e aporte sugerido convertem meta em plano executavel.
+      return '<div class="obj-card"><div class="obj-header"><div class="obj-icon">'+esc(o.emoji||'')+'</div><div><div class="obj-name">'+esc(o.nome)+'</div><div style="margin-top:4px;"><span class="badge '+(pct>=100?'bg-emerald':dr!==null&&dr<0?'bg-coral':dr!==null&&dr<=30?'bg-amber':'bg-sky')+'">'+st+'</span></div></div></div><div class="progress" style="height:9px;"><div class="progress-fill '+(pct>=100?'pf-emerald':pct>=70?'pf-cyan':'pf-violet')+'" style="width:'+Math.min(pct,100)+'%"></div></div><div style="display:flex;justify-content:space-between;margin:7px 0;font-size:11px;color:var(--text2);"><span class="mono c-emerald">'+fmtR(o.acumulado)+'</span><span class="mono" style="font-weight:800;">'+pct.toFixed(1)+'%</span><span class="mono">'+fmtR(o.valorAlvo)+'</span></div><div class="obj-stats"><div class="obj-stat"><div class="obj-stat-label">Restante</div><div class="obj-stat-val c-cyan">'+fmtR(rest)+'</div></div><div class="obj-stat"><div class="obj-stat-label">Prazo</div><div class="obj-stat-val '+(dr!==null&&dr<0?'c-coral':dr!==null&&dr<=30?'c-amber':'c-emerald')+'">'+(dr===null?'-':dr<0?'Esgotado':dr+' dias')+'</div></div><div class="obj-stat"><div class="obj-stat-label">Aporte sugerido</div><div class="obj-stat-val c-amber">'+(sug>0?fmtR(sug):'-')+'</div></div></div><div class="n9note">'+(pct>=100?'Meta atingida.':sug>0?'Sugestao mensal para chegar no prazo.':'Defina prazo para sugestao automatica.')+'</div><div class="obj-actions"><button class="btn btn-xs btn-amber" style="flex:1;justify-content:center;" onclick="modalAporte(\''+o.id+'\')">Aporte</button><button class="btn btn-xs btn-edit" onclick="editarObjetivo(\''+o.id+'\')">Editar</button><button class="btn btn-xs btn-danger" onclick="excluirObjetivo(\''+o.id+'\')">Excluir</button></div></div>';
+    }).join('');
+  };
+
+  function realized(key,tipo){return (DATA.movimentacoes||[]).filter(function(x){return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(key)&&(!tipo||x.tipo===tipo);}).reduce(function(s,x){return s+(x.valor||0);},0);}
+  window.renderPrevisoes=function(){
+    var c=document.getElementById('previsoesContent'); if(!c) return;
+    var key=document.getElementById('prevFiltroMes')?.value||ma(mes(),ano());
+    c.innerHTML='<div class="n9bar"><div><label>Mes exibido</label><input type="month" id="prevFiltroMes" value="'+key+'" onchange="renderPrevisoes()"></div><div><label>Mes de edicao</label><input type="month" id="prevMesEdit" value="'+key+'" onchange="renderPrevFormV9(this.value);n9ResumoPrev(this.value)"></div><button class="btn btn-primary btn-sm" onclick="salvarPrevisoes()">Salvar Previsoes</button><button class="btn btn-sm btn-amber" onclick="copiarMesAnterior()">Copiar mes anterior</button></div><div id="prevResumoV9"></div><div class="card" style="margin-bottom:18px;"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Editar previsoes</span><div class="sec-line"></div></div><div id="prevFormList"></div></div><div class="card"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Consolidado por mes e categoria</span><div class="sec-line"></div></div><div id="prevTabelaAll"></div></div>';
+    renderPrevFormV9(key); n9ResumoPrev(key); renderPrevTabelaV9(key);
+  };
+  window.renderPrevFormV9=function(key){
+    var list=document.getElementById('prevFormList'); if(!list) return;
+    var tipos=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+    list.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">'+tipos.map(function(t){var p=(DATA.previsoes||[]).find(function(x){return x.mesAno===key&&x.tipo===t.nome;});return '<div class="prev-tipo-row"><span class="prev-tipo-label">'+esc(t.emoji||'')+' '+esc(t.nome)+'</span><input type="number" step="0.01" min="0" class="prev-tipo-input" id="prev_'+encodeURIComponent(t.nome)+'" value="'+(p?p.valorPrevisto:'')+'" oninput="n9ResumoPrev(document.getElementById(\'prevMesEdit\').value)" style="width:120px;"></div>';}).join('')+'</div>';
+  };
+  window.n9ResumoPrev=function(key){
+    var tipos=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';}), total=0, rows='';
+    tipos.forEach(function(t){var inp=document.getElementById('prev_'+encodeURIComponent(t.nome)), val=inp?money(inp.value):0; total+=val; rows+='<tr><td>'+esc(t.nome)+'</td><td class="mono c-amber" style="text-align:right;">'+fmtR(val)+'</td><td class="mono c-coral" style="text-align:right;">'+fmtR(realized(key,t.nome))+'</td></tr>';});
+    var el=document.getElementById('prevResumoV9'); if(el) el.innerHTML='<div class="n9grid"><div class="n9metric"><div class="n9lbl">Total geral previsto</div><div class="n9val c-sky">'+fmtR(total)+'</div></div></div><div class="table-wrap" style="margin-bottom:14px;"><table><tr><th>Categoria</th><th style="text-align:right;">Subtotal previsto</th><th style="text-align:right;">Realizado</th></tr>'+rows+'<tr class="tr-totais"><td>Total</td><td class="mono c-amber" style="text-align:right;">'+fmtR(total)+'</td><td></td></tr></table></div>';
+  };
+  window.renderPrevTabelaV9=function(key){
+    var wrap=document.getElementById('prevTabelaAll'); if(!wrap) return;
+    var list=(DATA.previsoes||[]).filter(function(p){return p.mesAno===key;}).sort(function(a,b){return a.tipo.localeCompare(b.tipo);});
+    if(!list.length){wrap.innerHTML='<div style="color:var(--text3);padding:16px;text-align:center;">Nenhuma previsao para o periodo.</div>';return;}
+    var total=0,h='<div class="table-wrap"><table><tr><th>Competencia</th><th>Tipo</th><th style="text-align:right;">Valor</th><th>Acoes</th></tr><tr><td colspan="4" class="n9month">'+key+'</td></tr>';
+    list.forEach(function(p){total+=(p.valorPrevisto||0); h+='<tr><td class="mono">'+p.mesAno+'</td><td>'+esc(p.tipo)+'</td><td class="mono c-amber" style="text-align:right;">'+fmtR(p.valorPrevisto)+'</td><td><button class="btn btn-xs btn-edit" onclick="editarPrevisao(\''+p.id+'\')">Editar</button> <button class="btn btn-xs btn-danger" onclick="excluirPrevisao(\''+p.id+'\')">Excluir</button></td></tr>';});
+    wrap.innerHTML=h+'<tr class="tr-totais"><td colspan="2">Total geral</td><td class="mono c-amber" style="text-align:right;">'+fmtR(total)+'</td><td></td></tr></table></div>';
+  };
+  var oldSavePrev=window.salvarPrevisoes||salvarPrevisoes;
+  window.salvarPrevisoes=salvarPrevisoes=function(){ oldSavePrev.apply(this,arguments); setTimeout(function(){renderPrevisoes();},80); };
+
+  window.darBaixaReceber=function(id){
+    ensureV9();
+    var r=DATA.receber.find(function(x){return x.id===id;}); if(!r) return;
+    if(!(DATA.contas||[]).length) return showToast('Crie uma conta antes','var(--amber)');
+    var saldo=money(r.valor);
+    var h='<div class="info-block success">Titulo: <strong>'+esc(r.descricao)+'</strong><br>Saldo em aberto: <strong>'+fmtR(saldo)+'</strong></div><div class="grid g2" style="gap:12px;"><div><label>Conta de credito</label><select id="brConta">'+DATA.contas.map(function(c){return '<option value="'+c.id+'">'+esc(c.emoji||'')+' '+esc(c.nome)+'</option>';}).join('')+'</select></div><div><label>Data recebimento</label><input id="brDt" type="date" value="'+hoje()+'"></div></div><div style="margin-top:12px;"><label>Valor recebido</label><input id="brVal" type="number" step="0.01" value="'+saldo+'"></div>';
+    openModal('Recebimento parcial','',h,function(){
+      var val=money(document.getElementById('brVal').value); if(val<=0||val>saldo) return showToast('Informe valor entre 0 e o saldo em aberto','var(--amber)');
+      var residual=money(saldo-val);
+      r.valorOriginal=r.valorOriginal==null?saldo:r.valorOriginal; r.historicoRecebimentos=Array.isArray(r.historicoRecebimentos)?r.historicoRecebimentos:[];
+      // Historico da baixa parcial: data, valor recebido e saldo residual.
+      r.historicoRecebimentos.push({data:document.getElementById('brDt').value,valorRecebido:val,saldoResidual:residual});
+      r.valor=residual; r.valorRecebido=(r.valorRecebido||0)+val; r.status=residual<=0?'RECEBIDO':'PENDENTE'; if(residual<=0) r.dataRecebimento=document.getElementById('brDt').value;
+      DATA.movimentacoes.push({id:genId('MOV'),contaId:document.getElementById('brConta').value,tipoOp:'RECEITA',data:document.getElementById('brDt').value,descricao:'Recebimento: '+(r.descricao||''),tipo:r.tipo||'Receita',subtipo:r.subtipo||'',valor:val,status:'ATIVO',criadoEm:new Date().toISOString(),receberId:r.id});
+      save(true); renderReceber(); showToast(residual>0?'Recebimento parcial registrado. Saldo: '+fmtR(residual):'Titulo quitado','var(--emerald)',4000); closeAllModals();
+    });
+  };
+
+  console.log('Nexus One v9.0 aplicado: simulador, cartao, relatorios, objetivos, previsoes e recebimento parcial.');
+})();
+</script>
+<script>
+// ================================================================
+// Nexus One v9.1 - auditoria e correcao de backup/importacao.
+// Garante que JSON local e Google Drive preservem todos os modulos e campos v9.
+// ================================================================
+(function nexusBackupV91(){
+  var NEXUS_KEYS=[
+    'contas','movimentacoes','pagar','receber','gastosCartao','objetivos',
+    'tipos','subTipos','categoriasCartao','metasGasto','historicoFatura',
+    'auditoria','terceiros','movTerceiros','previsoes','transferencias'
+  ];
+  function cloneData(obj){ return JSON.parse(JSON.stringify(obj||{})); }
+  function normalizeBackupData(raw){
+    var d = raw && typeof raw==='object' ? raw : {};
+    NEXUS_KEYS.forEach(function(k){ if(!Array.isArray(d[k])) d[k]=[]; });
+    if(!d.config || typeof d.config!=='object') d.config={};
+    var cfg={nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false,googleClientId:'',driveConnected:false};
+    Object.keys(cfg).forEach(function(k){ if(d.config[k]===undefined) d.config[k]=cfg[k]; });
+    d.cartaoCicloAtual = d.cartaoCicloAtual && typeof d.cartaoCicloAtual==='object'
+      ? {mes:parseInt(d.cartaoCicloAtual.mes,10)||mes(), ano:parseInt(d.cartaoCicloAtual.ano,10)||ano()}
+      : {mes:mes(), ano:ano()};
+    // Metadados v9 sao nao destrutivos e mantem compatibilidade com backups antigos.
+    d.gastosCartao.forEach(function(g){ if(!g.status) g.status='pendente'; });
+    d.receber.forEach(function(r){
+      if(r.valorOriginal===undefined || r.valorOriginal===null) r.valorOriginal=r.valor||0;
+      if(!Array.isArray(r.historicoRecebimentos)) r.historicoRecebimentos=[];
+    });
+    d.objetivos.forEach(function(o){ if(!Array.isArray(o.aportes)) o.aportes=[]; });
+    // Migracao legado: pares antigos de transferencia em movimentacoes viram registros dedicados.
+    var byTransfer={};
+    d.movimentacoes.forEach(function(m){
+      if(m.transferenciaId && m.tipo==='TransferÃªncia'){
+        byTransfer[m.transferenciaId]=byTransfer[m.transferenciaId]||[];
+        byTransfer[m.transferenciaId].push(m);
+      }
+    });
+    Object.keys(byTransfer).forEach(function(id){
+      if(d.transferencias.some(function(t){return t.id===id || t._lid===id;})) return;
+      var desp=null, rec=null;
+      byTransfer[id].forEach(function(m){ if(m.tipoOp==='DESPESA') desp=m; else if(m.tipoOp==='RECEITA') rec=m; });
+      if(desp && rec){
+        d.transferencias.push({id:id,_lid:id,contaOrigemId:desp.contaId,contaDestinoId:rec.contaId,valor:desp.valor,data:desp.data,descricao:(desp.descricao||'').replace('â‡„ Transf.: ',''),status:'ATIVO',criadoEm:desp.criadoEm||new Date().toISOString()});
+        d.movimentacoes=d.movimentacoes.filter(function(m){return m.transferenciaId!==id;});
+      }
+    });
+    return d;
+  }
+  function countBackupRecords(d){
+    return NEXUS_KEYS.reduce(function(s,k){ return s+(Array.isArray(d[k])?d[k].length:0); },0);
+  }
+  function backupSummary(d){
+    return 'Contas: '+d.contas.length+'\n'+
+      'Movimentacoes: '+d.movimentacoes.length+'\n'+
+      'A Pagar: '+d.pagar.length+'\n'+
+      'A Receber: '+d.receber.length+'\n'+
+      'Cartao: '+d.gastosCartao.length+' gastos / '+d.historicoFatura.length+' faturas\n'+
+      'Objetivos: '+d.objetivos.length+'\n'+
+      'Previsoes: '+d.previsoes.length+'\n'+
+      'Transferencias: '+d.transferencias.length+'\n'+
+      'Terceiros: '+d.terceiros.length+' contas / '+d.movTerceiros.length+' movimentos\n'+
+      'Auditoria: '+d.auditoria.length+'\n'+
+      'Configuracoes e ciclo do cartao: incluidos';
+  }
+  function isValidBackup(d){
+    return d && typeof d==='object' && ['contas','movimentacoes','pagar','receber'].filter(function(k){return Array.isArray(d[k]);}).length>=2;
+  }
+  window.nexusNormalizeBackupData = normalizeBackupData;
+
+  window.exportBackup=function(){
+    DATA=normalizeBackupData(DATA);
+    save(true);
+    var hoje2=new Date().toISOString().split('T')[0];
+    var nomeUsuario=(DATA.config.nome||'nexus').replace(/\s+/g,'-').toLowerCase().replace(/[^a-z0-9-]/g,'');
+    var nome='nexus_backup_'+nomeUsuario+'_'+hoje2+'.json';
+    // Exporta o objeto DATA inteiro, incluindo configuracoes, auditoria e metadados v9.
+    dlBlob(JSON.stringify(DATA,null,2),nome,'application/json');
+    toast('Backup salvo: '+nome+' ('+countBackupRecords(DATA)+' registros em todos os modulos)');
+  };
+
+  window.importBackup=function(){
+    var inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+    inp.onchange=function(){
+      var f=this.files[0]; if(!f) return;
+      var reader=new FileReader();
+      reader.onload=function(e){
+        try{
+          var parsed=JSON.parse(e.target.result);
+          if(!isValidBackup(parsed)) return toast('Arquivo nao reconhecido como backup valido do sistema','var(--coral)');
+          var normalized=normalizeBackupData(parsed);
+          if(!confirm('Substituir todos os dados pelo arquivo importado?\n\n'+backupSummary(normalized))) return;
+          DATA=normalized;
+          // Nao chamar loadData aqui: ele recarrega o localStorage antigo e anula a importacao.
+          save(true);
+          navigateTo('dashboard');
+          toast('Backup importado com sucesso! ('+countBackupRecords(DATA)+' registros carregados)');
+        }catch(err){
+          console.error('Erro ao importar backup:',err);
+          toast('Arquivo invalido ou corrompido','var(--coral)');
+        }
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  };
+
+  var oldSaveToDrive=window.saveToGDrive;
+  window.saveToGDrive=async function(){
+    DATA=normalizeBackupData(DATA);
+    save(true);
+    if(typeof oldSaveToDrive==='function') return oldSaveToDrive.apply(this,arguments);
+  };
+
+  window.restoreFromGDrive=async function(){
+    if(!_driveAccessToken) return showToast('Drive nao conectado. Conecte primeiro.','var(--amber)');
+    showToast('Buscando backup no Google Drive...','var(--orange)',2000);
+    try{
+      var searchR=await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",{headers:{'Authorization':'Bearer '+_driveAccessToken}});
+      var searchData=await searchR.json();
+      if(!searchData.files || !searchData.files.length) return showToast('Nenhum backup encontrado no Drive.','var(--amber)');
+      var fileR=await fetch('https://www.googleapis.com/drive/v3/files/'+searchData.files[0].id+'?alt=media',{headers:{'Authorization':'Bearer '+_driveAccessToken}});
+      var parsed=JSON.parse(await fileR.text());
+      if(!isValidBackup(parsed)) return showToast('Arquivo de backup invalido.','var(--coral)');
+      var normalized=normalizeBackupData(parsed);
+      if(!confirm('Restaurar backup do Drive? Os dados atuais serao substituidos.\n\n'+backupSummary(normalized))) return;
+      DATA=normalized;
+      save(true);
+      navigateTo('dashboard');
+      showToast('Dados restaurados do Google Drive! ('+countBackupRecords(DATA)+' registros)','var(--emerald)',4000);
+    }catch(e){
+      console.error('Erro ao restaurar do Drive:',e);
+      showToast('Erro ao restaurar do Drive. Tente novamente.','var(--coral)');
+    }
+  };
+
+  DATA=normalizeBackupData(DATA);
+  console.log('Nexus One v9.1 aplicado: backup/importacao local e Drive normalizados para todos os modulos.');
+})();
+</script>
 </body>
 </html>
