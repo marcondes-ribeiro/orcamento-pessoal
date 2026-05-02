@@ -5326,7 +5326,7 @@ function renderPagar(){
     <input id="pfBusca" placeholder="🔍 Buscar..." style="min-width:200px;" oninput="filtrarPagar()">
     <input id="pfDtIni" type="date" onchange="filtrarPagar()">
     <input id="pfDtFim" type="date" onchange="filtrarPagar()">
-    <select id="pfStatus" onchange="filtrarPagar()"><option value="">Todos os status</option><option value="PENDENTE">Pendente</option><option value="PAGO">Pago</option></select>
+    <select id="pfStatus" onchange="filtrarPagar()"><option value="">Todos os status</option><option value="PENDENTE" selected>Pendente</option><option value="PAGO">Pago</option></select>
     <select id="pfDespTipo" onchange="filtrarPagar()"><option value="">Fixa + Variável</option><option value="fixa">📌 Somente Fixas</option><option value="variavel">📊 Somente Variáveis</option></select>
     <select id="pfTipo" onchange="atualizarFiltroSubtipoPagar();filtrarPagar()"><option value="">Todos os tipos</option>${DATA.tipos.filter(t=>t.classificacao==='DESPESA').map(t=>`<option>${esc(t.nome)}</option>`).join('')}</select>
     <select id="pfSubtipo" onchange="filtrarPagar()" style="display:none"><option value="">Todos os subtipos</option></select>
@@ -8885,23 +8885,53 @@ window.renderResumoGastosCartao = function(m2, a2){
   if(!gastosMes.length) return;
   var sec = document.getElementById('cartaoResumo');
   if(!sec) return;
-  var extra = '<div style="margin-top:20px;"><div class="sec-header" style="margin-top:0;"><span class="sec-title">📋 Lançamentos Pendentes do Mês</span><div class="sec-line"></div></div>'+
-    '<div class="table-wrap"><table><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
-  gastosMes.forEach(function(g){
-    var cat = DATA.categoriasCartao.find(function(c){return c.id===g.categoriaId;})||{nome:'—',emoji:'💳'};
-    extra += '<tr>'+
-      '<td>'+fmtD(g.data||'')+'</td>'+
-      '<td style="font-size:11px;">'+esc(cat.emoji||'💳')+'&nbsp;'+esc(cat.nome)+'</td>'+
-      '<td>'+esc(g.descricao||'—')+'</td>'+
-      '<td class="mono c-amber" style="text-align:right;">'+fmtR(g.valor)+'</td>'+
-      '<td><span class="badge '+(g.status==='faturado'?'bg-violet':'bg-amber')+'">'+(g.status==='faturado'?'FATURADO':'PENDENTE')+'</span></td>'+
-      '<td style="white-space:nowrap;">'+
-      '<button class="btn btn-xs btn-edit" onclick="editarGastoCartao(\''+g.id+'\')">✏</button> '+
-      '<button class="btn btn-xs btn-danger" onclick="excluirGastoCartao(\''+g.id+'\')">🗑</button>'+
-      '</td></tr>';
+  // Categorias presentes nos gastos do mês (para o filtro)
+  var catIdsPresentes = [];
+  gastosMes.forEach(function(g){ if(catIdsPresentes.indexOf(g.categoriaId)===-1) catIdsPresentes.push(g.categoriaId); });
+  var opsCat = '<option value="">Todas as categorias</option>';
+  catIdsPresentes.forEach(function(cid){
+    var cat = DATA.categoriasCartao.find(function(c){return c.id===cid;})||{nome:'Sem categoria',emoji:'💳'};
+    opsCat += '<option value="'+cid+'">'+esc(cat.emoji||'💳')+' '+esc(cat.nome)+'</option>';
   });
-  extra += '</table></div></div>';
+  var extra = '<div style="margin-top:20px;" id="cartaoPendentesWrap">'+
+    '<div class="sec-header" style="margin-top:0;"><span class="sec-title">📋 Lançamentos Pendentes do Mês</span><div class="sec-line"></div></div>'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'+
+      '<label style="font-size:11px;font-weight:700;color:var(--text2);white-space:nowrap;">🔍 Categoria:</label>'+
+      '<select id="filtroCatPendentes" onchange="filtrarLancPendentes()" style="width:auto;min-width:180px;font-size:12px;">'+opsCat+'</select>'+
+    '</div>'+
+    '<div class="table-wrap"><div id="tabelaLancPendentes"></div></div></div>';
   sec.innerHTML += extra;
+  window._gastosPendentesCache = gastosMes;
+  filtrarLancPendentes();
+};
+window.filtrarLancPendentes = function(){
+  var catFiltro = (document.getElementById('filtroCatPendentes')||{}).value||'';
+  var lista = (window._gastosPendentesCache||[]).filter(function(g){return catFiltro?g.categoriaId===catFiltro:true;});
+  var h='<table><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+  if(!lista.length){
+    h+='<tr><td colspan="6" style="text-align:center;padding:18px;color:var(--text3);">Nenhum lançamento para esta categoria</td></tr>';
+  } else {
+    lista.forEach(function(g){
+      var cat=DATA.categoriasCartao.find(function(c){return c.id===g.categoriaId;})||{nome:'—',emoji:'💳'};
+      h+='<tr>'+
+        '<td>'+fmtD(g.data||'')+'</td>'+
+        '<td style="font-size:11px;">'+esc(cat.emoji||'💳')+'&nbsp;'+esc(cat.nome)+'</td>'+
+        '<td>'+esc(g.descricao||'—')+'</td>'+
+        '<td class="mono c-amber" style="text-align:right;">'+fmtR(g.valor)+'</td>'+
+        '<td><span class="badge '+(g.status==='faturado'?'bg-violet':'bg-amber')+'">'+(g.status==='faturado'?'FATURADO':'PENDENTE')+'</span></td>'+
+        '<td style="white-space:nowrap;">'+
+        '<button class="btn btn-xs btn-edit" onclick="editarGastoCartao(\''+g.id+'\')">✏</button> '+
+        '<button class="btn btn-xs btn-danger" onclick="excluirGastoCartao(\''+g.id+'\')">🗑</button>'+
+        '</td></tr>';
+    });
+    var totalVis=lista.reduce(function(s,g){return s+g.valor;},0);
+    h+='<tr class="tr-totais"><td colspan="3" style="color:var(--orange);">TOTAL ('+lista.length+')</td>'+
+       '<td class="mono c-amber" style="text-align:right;font-weight:800;">'+fmtR(totalVis)+'</td>'+
+       '<td colspan="2"></td></tr>';
+  }
+  h+='</table>';
+  var wrap=document.getElementById('tabelaLancPendentes');
+  if(wrap) wrap.innerHTML=h;
 };
 
 // ================================================================
@@ -8981,13 +9011,19 @@ window.editarGastoCartao = function(id){
     g.data = document.getElementById('egDt')?.value||g.data;
     g.descricao = document.getElementById('egDesc')?.value||g.descricao;
     g.categoriaId = document.getElementById('egCat')?.value||g.categoriaId;
-    save(true); renderCartao(); toast('✅ Gasto atualizado'); closeAllModals();
+    var gb=window.sincronizarCartaoPagar&&g?g:null; if(gb){ var _bm=g.mes,_ba=g.ano; }
+    save(true); renderCartao(); toast('✅ Gasto atualizado');
+    if(typeof sincronizarCartaoPagar==='function'&&g) sincronizarCartaoPagar(g.mes,g.ano);
+    save(true);
+    closeAllModals();
   },'Salvar');
 };
 
 window.excluirGastoCartao = function(id){
   if(!confirm('Excluir este gasto?')) return;
+  var gDel=DATA.gastosCartao.find(function(x){return x.id===id;});
   DATA.gastosCartao = DATA.gastosCartao.filter(function(g){return g.id!==id;});
+  if(gDel&&typeof sincronizarCartaoPagar==='function') sincronizarCartaoPagar(gDel.mes,gDel.ano);
   save(true); renderCartao(); toast('🗑 Gasto excluído');
 };
 
@@ -9998,9 +10034,35 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
       if(val<=0) return showToast('Valor invalido','var(--amber)');
       // Competencia vem da fatura aberta, nao do calendario atual.
       DATA.gastosCartao.push({id:genId('GC'),categoriaId:document.getElementById('gCat').value,valor:val,data:document.getElementById('gData').value||hoje(),mes:b.m,ano:b.a,descricao:document.getElementById('gDesc').value,status:'pendente',criadoEm:new Date().toISOString()});
+      sincronizarCartaoPagar(b.m,b.a);
       save(true); renderCartao(); showToast('Gasto registrado na Fatura Atual','var(--emerald)'); closeAllModals();
     });
   };
+
+  // Sincroniza o total da fatura ativa com A Pagar automaticamente.
+  // Cria ou atualiza 1 unico registro rascunho (_rascunho:true) por ciclo.
+  // Nunca toca em registros ja fechados (origemCartao:true sem _rascunho).
+  window.sincronizarCartaoPagar = sincronizarCartaoPagar;
+  function sincronizarCartaoPagar(bm, ba){
+    var total=DATA.gastosCartao.filter(function(g){return g.mes===bm&&g.ano===ba&&g.status!=='faturado';}).reduce(function(s,g){return s+(g.valor||0);},0);
+    // Procura registro rascunho existente para este ciclo
+    var existente=DATA.pagar.find(function(p){return p._rascunho===true&&p._cicloMes===bm&&p._cicloAno===ba;});
+    if(total<=0){
+      // Se nao ha gastos, remove rascunho se existir
+      if(existente) DATA.pagar=DATA.pagar.filter(function(p){return !(p._rascunho===true&&p._cicloMes===bm&&p._cicloAno===ba);});
+      return;
+    }
+    var venc=ba+'-'+pad(bm<12?bm+1:1)+'-05';
+    if(bm===12){ var aNext=ba+1; venc=aNext+'-01-05'; }
+    var desc='Fatura '+labelMA(bm,ba)+' (em aberto)';
+    if(existente){
+      existente.valor=Math.round(total*100)/100;
+      existente.vencimento=venc;
+      existente.descricao=desc;
+    } else {
+      DATA.pagar.push({id:genId('PG'),vencimento:venc,descricao:desc,tipo:'CARTAO',categoria:'Cartao de Credito',valor:Math.round(total*100)/100,status:'PENDENTE',origemCartao:true,_rascunho:true,_cicloMes:bm,_cicloAno:ba,criadoEm:new Date().toISOString()});
+    }
+  }
 
   window.zerarFatura=function(){
     ensureV9();
@@ -10011,6 +10073,8 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
     openModal('Zerar Fatura','',h,function(){
       var fech=document.getElementById('zfDataFech').value||hoje(), venc=document.getElementById('zfVenc').value||fech, desc=document.getElementById('zfDesc').value||('Fatura '+labelMA(b.m,b.a)), fid=genId('FAT');
       pend.forEach(function(g){g.status='faturado';g.faturaId=fid;});
+      // Remove rascunho automatico antes de criar o registro fechado definitivo
+      DATA.pagar=DATA.pagar.filter(function(p){return !(p._rascunho===true&&p._cicloMes===b.m&&p._cicloAno===b.a);});
       // Historico da fatura guarda competencia e data real, que dirige o proximo ciclo.
       DATA.historicoFatura.push({id:fid,mes:b.m,ano:b.a,total:total,dataFechamentoReal:fech,dataFechamento:new Date().toISOString(),descricao:desc});
       DATA.pagar.push({id:genId('PG'),vencimento:venc,descricao:desc,tipo:'CARTAO',categoria:'Cartao de Credito',valor:total,status:'PENDENTE',origemCartao:true,faturaId:fid,criadoEm:new Date().toISOString()});
@@ -10087,7 +10151,7 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
   window.renderPrevisoes=function(){
     var c=document.getElementById('previsoesContent'); if(!c) return;
     var key=document.getElementById('prevFiltroMes')?.value||ma(mes(),ano());
-    c.innerHTML='<div class="n9bar"><div><label>Mes exibido</label><input type="month" id="prevFiltroMes" value="'+key+'" onchange="renderPrevisoes()"></div><div><label>Mes de edicao</label><input type="month" id="prevMesEdit" value="'+key+'" onchange="renderPrevFormV9(this.value);n9ResumoPrev(this.value)"></div><button class="btn btn-primary btn-sm" onclick="salvarPrevisoes()">Salvar Previsoes</button><button class="btn btn-sm btn-amber" onclick="copiarMesAnterior()">Copiar mes anterior</button></div><div id="prevResumoV9"></div><div class="card" style="margin-bottom:18px;"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Editar previsoes</span><div class="sec-line"></div></div><div id="prevFormList"></div></div><div class="card"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Consolidado por mes e categoria</span><div class="sec-line"></div></div><div id="prevTabelaAll"></div></div>';
+    c.innerHTML='<div class="n9bar"><div><label>Mes exibido</label><input type="month" id="prevFiltroMes" value="'+key+'" onchange="renderPrevisoes()"></div><div><label>Mes de edicao</label><input type="month" id="prevMesEdit" value="'+key+'" onchange="renderPrevFormV9(this.value);n9ResumoPrev(this.value)"></div><button class="btn btn-primary btn-sm" onclick="salvarPrevisoes()">Salvar Previsoes</button><button class="btn btn-sm btn-amber" onclick="copiarMesAnterior()">Copiar mes anterior</button></div><div class="card" style="margin-bottom:18px;"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Editar previsoes</span><div class="sec-line"></div></div><div id="prevFormList"></div></div><div id="prevResumoV9"></div><div class="card"><div class="sec-header" style="margin-top:0;"><span class="sec-title">Consolidado por mes e categoria</span><div class="sec-line"></div></div><div id="prevTabelaAll"></div></div>';
     renderPrevFormV9(key); n9ResumoPrev(key); renderPrevTabelaV9(key);
   };
   window.renderPrevFormV9=function(key){
@@ -10268,524 +10332,6 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
 
   DATA=normalizeBackupData(DATA);
   console.log('Nexus One v9.1 aplicado: backup/importacao local e Drive normalizados para todos os modulos.');
-})();
-</script>
-<script>
-// ================================================================
-// NEXUS ONE v10.0 — PATCH OFICIAL
-// Correções: (1) Integração Cartão→A Pagar com consolidação mensal
-//            (2) Filtro por categoria em Lançamentos Pendentes do Cartão
-//            (3) Reordenação UX do módulo Previsões (card total → inputs)
-// Autor: Engenheiro de Software Sênior — Sistema NEXUS ONE
-// Garantias: idempotente, sem duplicação, sem sobrescrever registros fechados
-// ================================================================
-(function nexusPatchV10(){
-  'use strict';
-
-  // ── Utilitários internos ──────────────────────────────────────────
-  function money(v){ return Math.round((parseFloat(v)||0)*100)/100; }
-
-  // Calcula mês seguinte a partir de {mes, ano} (1-indexed)
-  function proximoMesAno(m, a){
-    if(m===12) return {mes:1, ano:a+1};
-    return {mes:m+1, ano:a};
-  }
-
-  // Retorna a chave canônica de competência de cartão "TIPO_CARTAO|YYYY-MM"
-  function chaveCartao(anoN, mesN){
-    var pad2=function(n){return n<10?'0'+n:String(n);};
-    return 'TIPO_CARTAO|'+anoN+'-'+pad2(mesN);
-  }
-
-  // Retorna a data de vencimento do cartão: dia 05 do mês seguinte
-  function vencimentoCartao(mesAtual, anoAtual){
-    var prox=proximoMesAno(mesAtual, anoAtual);
-    var pad2=function(n){return n<10?'0'+n:String(n);};
-    return prox.ano+'-'+pad2(prox.mes)+'-05';
-  }
-
-  // ================================================================
-  // [1] INTEGRAÇÃO CARTÃO → A PAGAR — LÓGICA CORRIGIDA E IDEMPOTENTE
-  // ================================================================
-
-  /**
-   * upsertCartaoPagar(mesAtual, anoAtual, valorFatura, desc)
-   *
-   * Regras:
-   * - 1 único registro por competência (chave = origem:CARTAO + mesAno)
-   * - Novos lançamentos pós-zeramento somam ao registro do mês seguinte
-   * - Registros PAGOS não são modificados
-   * - Idempotente: múltiplas chamadas não duplicam
-   */
-  function upsertCartaoPagar(mesAtual, anoAtual, valorFatura, desc){
-    if(!DATA || !DATA.pagar) return;
-
-    var chave = chaveCartao(anoAtual, mesAtual);
-    var venc  = vencimentoCartao(mesAtual, anoAtual);
-
-    // Busca registro existente NÃO pago com essa chave de competência
-    var existente = DATA.pagar.find(function(p){
-      return p._cartaoChave === chave && p.status !== 'PAGO';
-    });
-
-    if(existente){
-      // SOMA ao registro existente (não sobrescreve, não duplica)
-      existente.valor = money(existente.valor + valorFatura);
-      existente.vencimento = venc; // atualiza vencimento para dia 05 do mês seguinte
-    } else {
-      // Cria novo registro consolidado
-      DATA.pagar.push({
-        id          : genId('PG'),
-        _cartaoChave: chave,
-        vencimento  : venc,
-        descricao   : desc || ('Fatura Cartão — ' + mesAtual + '/' + anoAtual),
-        tipo        : 'CARTÃO',
-        categoria   : 'Cartão de Crédito',
-        despesaTipo : 'variavel',
-        valor       : money(valorFatura),
-        status      : 'PENDENTE',
-        criadoEm    : new Date().toISOString()
-      });
-    }
-  }
-
-  // ── Substituir zerarFatura com a lógica corrigida ─────────────────
-  var _zerarOriginal = window.zerarFatura || function(){};
-  window.zerarFatura = function zerarFaturaV10(){
-    var m2 = (typeof mes === 'function') ? mes() : new Date().getMonth()+1;
-    var a2 = (typeof ano === 'function') ? ano() : new Date().getFullYear();
-
-    // Apenas gastos do ciclo atual (não faturados)
-    var gastosAtivos = DATA.gastosCartao.filter(function(g){
-      return g.mes===m2 && g.ano===a2 && g.status!=='faturado';
-    });
-    var total = gastosAtivos.reduce(function(s,g){return s+g.valor;},0);
-    total = money(total);
-
-    if(!total){
-      showToast('⚠️ Nenhum gasto pendente no cartão neste mês','var(--amber)');
-      return;
-    }
-
-    var pad2=function(n){return n<10?'0'+n:String(n);};
-    var descPadrao = 'Fatura ' + (typeof nomeMesFull==='function'?nomeMesFull(m2):m2) + '/' + a2;
-
-    // Resumo por categoria para o modal
-    var resumoCats = '';
-    (DATA.categoriasCartao||[]).forEach(function(cat){
-      var ac = gastosAtivos.filter(function(g){return g.categoriaId===cat.id;})
-                           .reduce(function(s,g){return s+g.valor;},0);
-      if(ac>0){
-        resumoCats += '<div style="display:flex;justify-content:space-between;font-size:11px;'+
-          'padding:5px 0;border-bottom:1px solid var(--border);">'+
-          '<span>'+(cat.emoji||'')+'&nbsp;'+(typeof esc==='function'?esc(cat.nome):cat.nome)+'</span>'+
-          '<span class="mono c-amber">'+(typeof fmtR==='function'?fmtR(ac):'R$ '+ac.toFixed(2))+'</span></div>';
-      }
-    });
-
-    var vencSugerido = vencimentoCartao(m2, a2);
-    var h = '<div class="info-block warn" style="margin-bottom:16px;">'+
-      '<strong>💳 Total da fatura: '+(typeof fmtR==='function'?fmtR(total):'R$ '+total.toFixed(2))+'</strong><br>'+
-      '<span style="font-size:11px;color:var(--text3);">Os gastos serão movidos para o módulo A Pagar (dia 05 do próximo mês)</span></div>'+
-      '<div class="mrow"><div><label>Vencimento (automático: dia 05)</label>'+
-      '<input id="zfVenc" type="date" value="'+vencSugerido+'"></div>'+
-      '<div><label>Descrição</label><input id="zfDesc" value="'+(typeof esc==='function'?esc(descPadrao):descPadrao)+'"></div></div>'+
-      (resumoCats?'<div style="margin-top:14px;"><div style="font-size:10px;text-transform:uppercase;'+
-        'letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:8px;">Detalhamento por categoria</div>'+
-        resumoCats+'</div>':'');
-
-    openModal('🔄 Zerar Fatura — Enviar para A Pagar','🔄',h,function(){
-      var venc = document.getElementById('zfVenc')?.value || vencSugerido;
-      var desc = document.getElementById('zfDesc')?.value || descPadrao;
-      if(!venc){ showToast('⚠️ Informe a data de vencimento','var(--amber)'); return; }
-
-      // 1. Registrar no histórico de faturas
-      (DATA.historicoFatura = DATA.historicoFatura||[]).push({
-        mes:m2, ano:a2, total:total,
-        dataFechamento: new Date().toISOString()
-      });
-
-      // 2. Marcar gastos como faturados (NÃO excluir — mantém histórico)
-      DATA.gastosCartao.forEach(function(g){
-        if(g.mes===m2 && g.ano===a2 && g.status!=='faturado'){
-          g.status = 'faturado';
-        }
-      });
-
-      // 3. Upsert no módulo A Pagar — consolidado, sem duplicidade
-      upsertCartaoPagar(m2, a2, total, desc);
-
-      if(typeof save==='function') save(true);
-      if(typeof renderCartao==='function') renderCartao();
-      if(typeof renderPagar==='function') renderPagar();
-      showToast('✅ Fatura registrada em A Pagar — venc. '+venc+' | '+
-        (typeof fmtR==='function'?fmtR(total):'R$'+total.toFixed(2)),
-        'var(--emerald)', 5000);
-      if(typeof closeAllModals==='function') closeAllModals();
-    },'✅ Confirmar e Enviar para A Pagar');
-  };
-
-  // ── Garantir que novos lançamentos no cartão pós-zeramento ────────
-  // Quando um gasto é adicionado, se houver uma fatura JÁ ENVIADA para o mês
-  // atual (gastos marcados como faturados), o novo gasto pertence ao próximo ciclo.
-  // Isso é tratado naturalmente porque zerarFatura marca os gastos como 'faturado'
-  // e renderCartaoV44 filtra por status!=='faturado' para o ciclo ativo.
-  // NADA precisa ser alterado na adição — a lógica de ciclo já funciona corretamente.
-
-
-  // ================================================================
-  // [2] FILTRO POR CATEGORIA EM "LANÇAMENTOS PENDENTES DO MÊS"
-  // ================================================================
-  var _renderResumoGastosOriginal = window.renderResumoGastosCartao || function(){};
-
-  window.renderResumoGastosCartao = function renderResumoGastosCartaoV10(m2, a2){
-    m2 = m2 || (typeof mes==='function'?mes():new Date().getMonth()+1);
-    a2 = a2 || (typeof ano==='function'?ano():new Date().getFullYear());
-
-    var sec = document.getElementById('cartaoResumo');
-    if(!sec) return;
-
-    // Remover bloco anterior se existir (idempotente)
-    var oldBlock = document.getElementById('cartaoPendentesBlock');
-    if(oldBlock) oldBlock.remove();
-
-    // Todos os gastos pendentes (não faturados) do mês
-    var todosGastos = (DATA.gastosCartao||[]).filter(function(g){
-      return g.mes===m2 && g.ano===a2 && g.status!=='faturado';
-    }).sort(function(a,b){return (b.data||'').localeCompare(a.data||'');});
-
-    if(!todosGastos.length) return;
-
-    // Categorias presentes nos gastos do mês
-    var catIds = [...new Set(todosGastos.map(function(g){return g.categoriaId;}))];
-    var opcoesCategoria = catIds.map(function(cid){
-      var cat=(DATA.categoriasCartao||[]).find(function(c){return c.id===cid;})||{nome:'Sem categoria',emoji:'💳'};
-      return '<option value="'+cid+'">'+cat.emoji+'&nbsp;'+cat.nome+'</option>';
-    }).join('');
-
-    var bloco = document.createElement('div');
-    bloco.id = 'cartaoPendentesBlock';
-    bloco.style.cssText = 'margin-top:20px;';
-
-    bloco.innerHTML =
-      '<div class="sec-header" style="margin-top:0;">'+
-        '<span class="sec-title">📋 Lançamentos Pendentes do Mês</span>'+
-        '<div class="sec-line"></div>'+
-      '</div>'+
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'+
-        '<label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Filtrar categoria:</label>'+
-        '<select id="filtroCategoriaPendentes" onchange="nexusFilterPendentes()" '+
-          'style="width:auto;min-width:160px;font-size:12px;">'+
-          '<option value="">✨ Todas as categorias</option>'+
-          opcoesCategoria+
-        '</select>'+
-        '<span id="pendentesCount" style="font-size:10px;color:var(--text3);margin-left:4px;"></span>'+
-      '</div>'+
-      '<div class="table-wrap"><div id="pendentesTabela"></div></div>';
-
-    sec.appendChild(bloco);
-
-    // Renderizar tabela inicial (sem filtro)
-    nexusRenderPendentesTabela(todosGastos, m2, a2);
-  };
-
-  // Renderiza a tabela de pendentes para um conjunto de gastos filtrados
-  window.nexusRenderPendentesTabela = function(gastosFiltrados, m2, a2){
-    var tabDiv = document.getElementById('pendentesTabela');
-    if(!tabDiv) return;
-
-    var h = '<table><tr><th>Data</th><th>Categoria</th><th>Descrição</th>'+
-            '<th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
-    if(!gastosFiltrados.length){
-      h += '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3);">'+
-           'Nenhum lançamento para a categoria selecionada</td></tr>';
-    } else {
-      gastosFiltrados.forEach(function(g){
-        var cat=(DATA.categoriasCartao||[]).find(function(c){return c.id===g.categoriaId;})||{nome:'—',emoji:'💳'};
-        h += '<tr>'+
-          '<td>'+(typeof fmtD==='function'?fmtD(g.data||''):g.data||'—')+'</td>'+
-          '<td style="font-size:11px;">'+(typeof esc==='function'?esc(cat.emoji||'💳'):(cat.emoji||'💳'))+'&nbsp;'+(typeof esc==='function'?esc(cat.nome):cat.nome)+'</td>'+
-          '<td>'+(typeof esc==='function'?esc(g.descricao||'—'):g.descricao||'—')+'</td>'+
-          '<td class="mono c-amber" style="text-align:right;font-weight:600;">'+(typeof fmtR==='function'?fmtR(g.valor):'R$ '+g.valor.toFixed(2))+'</td>'+
-          '<td><span class="badge '+(g.status==='faturado'?'bg-violet':'bg-amber')+'">'+(g.status==='faturado'?'FATURADO':'PENDENTE')+'</span></td>'+
-          '<td style="white-space:nowrap;">'+
-          '<button class="btn btn-xs btn-edit" onclick="editarGastoCartao(\''+g.id+'\')">✏</button> '+
-          '<button class="btn btn-xs btn-danger" onclick="excluirGastoCartao(\''+g.id+'\')">🗑</button>'+
-          '</td></tr>';
-      });
-      // Linha de total
-      var totalFilt = gastosFiltrados.reduce(function(s,g){return s+g.valor;},0);
-      h += '<tr class="tr-totais">'+
-           '<td colspan="3" style="font-weight:800;color:var(--orange);">TOTAL ('+gastosFiltrados.length+')</td>'+
-           '<td class="mono c-amber" style="text-align:right;font-weight:800;">'+(typeof fmtR==='function'?fmtR(totalFilt):'R$ '+totalFilt.toFixed(2))+'</td>'+
-           '<td colspan="2"></td></tr>';
-    }
-    h += '</table>';
-    tabDiv.innerHTML = h;
-
-    // Atualizar contador
-    var cnt = document.getElementById('pendentesCount');
-    if(cnt) cnt.textContent = gastosFiltrados.length + ' lançamento(s)';
-  };
-
-  // Função de filtro chamada pelo dropdown
-  window.nexusFilterPendentes = function(){
-    var sel = document.getElementById('filtroCategoriaPendentes');
-    var catFiltro = sel ? sel.value : '';
-    var m2 = typeof mes==='function'?mes():new Date().getMonth()+1;
-    var a2 = typeof ano==='function'?ano():new Date().getFullYear();
-
-    var todos = (DATA.gastosCartao||[]).filter(function(g){
-      return g.mes===m2 && g.ano===a2 && g.status!=='faturado';
-    }).sort(function(a,b){return (b.data||'').localeCompare(a.data||'');});
-
-    var filtrado = catFiltro ? todos.filter(function(g){return g.categoriaId===catFiltro;}) : todos;
-    nexusRenderPendentesTabela(filtrado, m2, a2);
-  };
-
-
-  // ================================================================
-  // [3] MÓDULO PREVISÕES — REORDENAÇÃO UX: CARD TOTAL → INPUTS
-  // ================================================================
-  // Problema: os inputs de edição apareciam antes ou fora do contexto do card total.
-  // Solução: garantir que o card "Valor Previsto Total" seja sempre o PRIMEIRO
-  //          elemento visível, seguido imediatamente pelos inputs de edição.
-  // A versão v9.0 usa renderPrevFormV9 + n9ResumoPrev que injeta o card de
-  // métricas em "prevResumoV9" — mas a ordem no DOM coloca o formulário
-  // (prevFormList) ACIMA do resumo. Corrigimos reconstruindo o layout.
-
-  var _renderPrevisoesOrigV10 = window.renderPrevisoes;
-  window.renderPrevisoes = function renderPrevisoesV10(){
-    var key;
-    var filtEl = document.getElementById('prevFiltroMes');
-    var editEl = document.getElementById('prevMesEdit');
-    var pad2=function(n){return n<10?'0'+n:String(n);};
-    var m2 = typeof mes==='function'?mes():new Date().getMonth()+1;
-    var a2 = typeof ano==='function'?ano():new Date().getFullYear();
-    key = filtEl ? filtEl.value : (a2+'-'+pad2(m2));
-
-    var c = document.getElementById('previsoesContent');
-    if(!c) { if(typeof _renderPrevisoesOrigV10==='function') _renderPrevisoesOrigV10.apply(this,arguments); return; }
-
-    // Calcular total previsto para o mês selecionado
-    var prevsMes = (DATA.previsoes||[]).filter(function(p){return p.mesAno===key;});
-    var totalPrevisto = prevsMes.reduce(function(s,p){return s+(p.valorPrevisto||0);},0);
-    var nPrev = prevsMes.length;
-
-    // Calcular realizado
-    var realized_val = function(mesAno, tipoNome){
-      return (DATA.movimentacoes||[]).filter(function(x){
-        return x.tipoOp==='DESPESA' && x.status!=='ANULADO' &&
-               x.data && x.data.startsWith(mesAno) && x.tipo===tipoNome;
-      }).reduce(function(s,x){return s+x.valor;},0);
-    };
-    var totalRealizado = (DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';})
-      .reduce(function(s,t){return s+realized_val(key,t.nome);},0);
-
-    var saldoPrev = totalPrevisto - totalRealizado;
-    var corSaldo = saldoPrev>50?'var(--emerald)':saldoPrev<-50?'var(--coral)':'var(--amber)';
-    var fR = typeof fmtR==='function'?fmtR:function(v){return 'R$ '+v.toFixed(2);};
-
-    // ── LAYOUT CORRIGIDO: Card Total PRIMEIRO, depois barras de controle, depois inputs ──
-    c.innerHTML =
-      // 1. CARD TOTAL — primeiro elemento (lógica de leitura correta)
-      '<div class="grid g3" style="margin-bottom:20px;" id="prevKpiRowV10">'+
-        '<div class="kpi-card">'+
-          '<div class="kpi-accent" style="background:var(--sky);"></div>'+
-          '<div class="kpi-label">🔵 Total Previsto</div>'+
-          '<div class="kpi-value c-sky">'+fR(totalPrevisto)+'</div>'+
-          '<div class="kpi-sub">'+nPrev+' categoria(s) · '+key+'</div>'+
-        '</div>'+
-        '<div class="kpi-card">'+
-          '<div class="kpi-accent" style="background:var(--orange);"></div>'+
-          '<div class="kpi-label">🟠 Total Realizado</div>'+
-          '<div class="kpi-value c-orange">'+fR(totalRealizado)+'</div>'+
-          '<div class="kpi-sub">Despesas efetivas no período</div>'+
-        '</div>'+
-        '<div class="kpi-card">'+
-          '<div class="kpi-accent" style="background:'+corSaldo+';"></div>'+
-          '<div class="kpi-label">⚖️ Saldo (Previsto−Realizado)</div>'+
-          '<div class="kpi-value" style="color:'+corSaldo+';">'+(saldoPrev>=0?'+':'')+fR(saldoPrev)+'</div>'+
-          '<div class="kpi-sub">'+(saldoPrev>50?'✅ Dentro do orçamento':saldoPrev<-50?'🔴 Acima do previsto':'🟡 Próximo ao limite')+'</div>'+
-        '</div>'+
-      '</div>'+
-
-      // 2. Card de edição — LOGO ABAIXO do card total
-      '<div class="card" style="margin-bottom:18px;">'+
-        '<div class="sec-header" style="margin-top:0;">'+
-          '<span class="sec-title">📝 Ajustar Valores Previstos</span>'+
-          '<div class="sec-line"></div>'+
-        '</div>'+
-        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">'+
-          '<div><label>Mês de Referência</label>'+
-          '<input type="month" id="prevFiltroMes" value="'+key+'" style="width:auto;" '+
-          'onchange="renderPrevisoes()"></div>'+
-          '<div style="display:flex;gap:8px;margin-top:18px;">'+
-            '<button class="btn btn-primary btn-sm" onclick="salvarPrevisoesV10()">💾 Salvar Previsões</button>'+
-            '<button class="btn btn-sm btn-amber" onclick="copiarMesAnterior()">📋 Copiar Mês Anterior</button>'+
-          '</div>'+
-        '</div>'+
-        // 3. Inputs de valor (preenchidos após o card total)
-        '<div id="prevFormList"></div>'+
-      '</div>'+
-
-      // 4. Tabela consolidada
-      '<div class="card">'+
-        '<div class="sec-header" style="margin-top:0;">'+
-          '<span class="sec-title">📋 Previsões Cadastradas</span>'+
-          '<div class="sec-line"></div>'+
-        '</div>'+
-        '<div id="prevTabelaAll"></div>'+
-      '</div>';
-
-    // Renderizar formulário de inputs
-    nexusRenderPrevForm(key);
-    // Renderizar tabela
-    nexusRenderPrevTabela(key);
-  };
-
-  // Renderiza os inputs por tipo de despesa
-  window.nexusRenderPrevForm = function(key){
-    var list = document.getElementById('prevFormList');
-    if(!list) return;
-    var tipos = (DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
-    var fR = typeof fmtR==='function'?fmtR:function(v){return 'R$ '+v.toFixed(2);};
-    var realized_val = function(mesAno, tipoNome){
-      return (DATA.movimentacoes||[]).filter(function(x){
-        return x.tipoOp==='DESPESA' && x.status!=='ANULADO' &&
-               x.data && x.data.startsWith(mesAno) && x.tipo===tipoNome;
-      }).reduce(function(s,x){return s+x.valor;},0);
-    };
-    list.innerHTML =
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">'+
-      tipos.map(function(t){
-        var p=(DATA.previsoes||[]).find(function(x){return x.mesAno===key&&x.tipo===t.nome;});
-        var real=realized_val(key,t.nome);
-        return '<div style="background:var(--surface2);border:1px solid var(--border);'+
-          'border-radius:10px;padding:12px 14px;">'+
-          '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'+
-          '<span style="font-size:12px;font-weight:700;">'+(t.emoji||'📋')+'&nbsp;'+t.nome+'</span>'+
-          (real>0?'<span style="font-size:10px;color:var(--coral);">Real: '+fR(real)+'</span>':'')+
-          '</div>'+
-          '<input type="number" step="0.01" min="0" placeholder="0,00" '+
-          'id="prev_'+encodeURIComponent(t.nome)+'" '+
-          'value="'+(p&&p.valorPrevisto>0?p.valorPrevisto:'')+'" '+
-          'style="width:100%;font-size:13px;" '+
-          'oninput="nexusAtualizarCardTotalPrevisoes()">'+
-          '</div>';
-      }).join('')+
-      '</div>';
-  };
-
-  // Atualiza o card de total em tempo real conforme usuário digita
-  window.nexusAtualizarCardTotalPrevisoes = function(){
-    var tipos = (DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
-    var total = tipos.reduce(function(s,t){
-      var inp = document.getElementById('prev_'+encodeURIComponent(t.nome));
-      return s + (inp?money(inp.value):0);
-    },0);
-    var fR = typeof fmtR==='function'?fmtR:function(v){return 'R$ '+v.toFixed(2);};
-    var el = document.querySelector('#prevKpiRowV10 .kpi-value.c-sky');
-    if(el) el.textContent = fR(total);
-    var sub = document.querySelector('#prevKpiRowV10 .kpi-card:nth-child(1) .kpi-sub');
-    var tipos_preenchidos = tipos.filter(function(t){
-      var inp=document.getElementById('prev_'+encodeURIComponent(t.nome));
-      return inp && money(inp.value)>0;
-    }).length;
-    if(sub){
-      var filtEl = document.getElementById('prevFiltroMes');
-      var key = filtEl ? filtEl.value : '';
-      sub.textContent = tipos_preenchidos+' categoria(s) · '+key;
-    }
-  };
-
-  // Salvar previsões (versão v10 — conecta ao salvarPrevisoes original)
-  window.salvarPrevisoesV10 = function(){
-    var filtEl = document.getElementById('prevFiltroMes');
-    var pad2=function(n){return n<10?'0'+n:String(n);};
-    var m2 = typeof mes==='function'?mes():new Date().getMonth()+1;
-    var a2 = typeof ano==='function'?ano():new Date().getFullYear();
-    var key = filtEl ? filtEl.value : (a2+'-'+pad2(m2));
-
-    // Temporariamente ajustar prevMesEdit para que salvarPrevisoes original funcione
-    var editEl = document.getElementById('prevMesEdit');
-    var criado = false;
-    if(!editEl){
-      editEl = document.createElement('input');
-      editEl.id = 'prevMesEdit';
-      editEl.style.display='none';
-      document.body.appendChild(editEl);
-      criado = true;
-    }
-    editEl.value = key;
-
-    if(typeof salvarPrevisoes==='function') salvarPrevisoes();
-    if(criado) editEl.remove();
-
-    // Re-renderizar para atualizar cards
-    setTimeout(function(){
-      if(typeof renderPrevisoes==='function') renderPrevisoes();
-    }, 100);
-  };
-
-  // Tabela de previsões do mês selecionado
-  window.nexusRenderPrevTabela = function(key){
-    var wrap = document.getElementById('prevTabelaAll');
-    if(!wrap) return;
-    var list=(DATA.previsoes||[]).filter(function(p){return p.mesAno===key;})
-      .sort(function(a,b){return a.tipo.localeCompare(b.tipo);});
-    if(!list.length){
-      wrap.innerHTML='<div style="color:var(--text3);padding:16px;text-align:center;">'+
-        'Nenhuma previsão cadastrada para este período.</div>';
-      return;
-    }
-    var fR = typeof fmtR==='function'?fmtR:function(v){return 'R$ '+v.toFixed(2);};
-    var total=list.reduce(function(s,p){return s+(p.valorPrevisto||0);},0);
-    var h='<div class="table-wrap"><table>'+
-      '<tr><th>Competência</th><th>Tipo</th><th style="text-align:right;">Valor Previsto</th><th>Ações</th></tr>';
-    list.forEach(function(p){
-      h+='<tr>'+
-        '<td class="mono" style="font-size:12px;">'+p.mesAno+'</td>'+
-        '<td style="font-weight:500;">'+(typeof esc==='function'?esc(p.tipo):p.tipo)+'</td>'+
-        '<td class="mono c-amber" style="text-align:right;">'+fR(p.valorPrevisto)+'</td>'+
-        '<td style="white-space:nowrap;">'+
-        '<button class="btn btn-xs btn-edit" onclick="editarPrevisao(\''+p.id+'\')">✏ Editar</button> '+
-        '<button class="btn btn-xs btn-danger" onclick="excluirPrevisao(\''+p.id+'\')">🗑</button>'+
-        '</td></tr>';
-    });
-    h+='<tr class="tr-totais">'+
-      '<td colspan="2" style="color:var(--orange);">TOTAL</td>'+
-      '<td class="mono c-amber" style="text-align:right;font-weight:800;">'+fR(total)+'</td>'+
-      '<td></td></tr></table></div>';
-    wrap.innerHTML=h;
-  };
-
-
-  // ================================================================
-  // HOOK: Após qualquer re-render do cartão, recriar a seção de pendentes
-  // ================================================================
-  var _renderCartaoFinalOrig = window.renderCartao;
-  window.renderCartao = function renderCartaoV10Wrap(){
-    if(typeof _renderCartaoFinalOrig==='function') _renderCartaoFinalOrig.apply(this,arguments);
-    // Após o render, recriar a seção de pendentes com filtro
-    setTimeout(function(){
-      var m2 = typeof mes==='function'?mes():new Date().getMonth()+1;
-      var a2 = typeof ano==='function'?ano():new Date().getFullYear();
-      if(typeof nexusRenderPrevForm!=='undefined'){
-        // só reinjetar pendentes se a seção existir
-        var sec = document.getElementById('cartaoResumo');
-        if(sec && (DATA.gastosCartao||[]).some(function(g){return g.mes===m2&&g.ano===a2&&g.status!=='faturado';})){
-          window.renderResumoGastosCartao(m2, a2);
-        }
-      }
-    }, 60);
-  };
-
-  console.log('✅ Nexus One v10.0 — Patch aplicado:');
-  console.log('  [1] Cartão→A Pagar: integração corrigida, consolidação mensal, sem duplicidade');
-  console.log('  [2] Filtro por categoria em Lançamentos Pendentes do Cartão');
-  console.log('  [3] Previsões: reordenado (Card Total → Inputs), atualização em tempo real');
-
 })();
 </script>
 </body>
