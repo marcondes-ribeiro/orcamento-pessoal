@@ -10677,6 +10677,158 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
   console.log('Nexus One v10.0: Cartão unificado com Tipos de Despesa aplicado.');
 
   // ================================================================
+  // Nexus One v11.0 — Integração Financeira Completa do Módulo Cartão
+  // Regras:
+  //  1. Cada gasto de cartão gera 1 lançamento individual em A Pagar
+  //  2. Gastos existentes sem lançamento são migrados automaticamente
+  //  3. sincronizarCartaoPagar (rascunho único) é desativado — sem duplicidade
+  //  4. Relatórios/Dashboard incluem gastos de cartão via DATA.pagar (origem:'CARTAO')
+  //     sem duplicar com movimentacoes
+  //  5. Zerar Fatura apenas fecha o ciclo operacional; os lançamentos em A Pagar permanecem
+  // ================================================================
+  (function nexusIntegracaoV11(){
+
+    // ── 1. Desativar sincronizarCartaoPagar ──
+    window.sincronizarCartaoPagar = function(){ /* desativado v11: sem rascunho único */ };
+
+    // ── 2. Migrar gastos existentes sem lançamento individual em A Pagar ──
+    function migrarGastosLegados(){
+      var migrados = 0;
+      (DATA.gastosCartao||[]).forEach(function(g){
+        if(g.status==='faturado') return; // encerrado — não migrar
+        // Verifica se já existe lançamento individual para este gasto
+        var jaExiste = (DATA.pagar||[]).some(function(p){
+          return p.gastoCartaoId===g.id ||
+                 (p.origem==='CARTAO' && p.gastoCartaoId===g.id);
+        });
+        if(jaExiste) return;
+        // Verificar também se não é rascunho de lote (não migrar rascunhos _rascunho)
+        // Criar lançamento individual
+        var gMes = g.mes||new Date().getMonth()+1;
+        var gAno = g.ano||new Date().getFullYear();
+        var vMes = gMes===12?1:gMes+1;
+        var vAno = gMes===12?gAno+1:gAno;
+        var venc = vAno+'-'+(vMes<10?'0':'')+vMes+'-05';
+        var desc = g.descricao||g.tipoNome||'Cartão';
+        var sub  = g.subtipo||'';
+        DATA.pagar.push({
+          id: genId('PG'),
+          vencimento: venc,
+          descricao: '💳 Cartão: '+desc+(sub?' ('+sub+')':''),
+          tipo: g.tipoNome||'CARTAO',
+          subtipo: sub,
+          fornecedor: 'Fatura Cartão',
+          valor: g.valor||0,
+          status: 'PENDENTE',
+          despesaTipo: 'variavel',
+          origem: 'CARTAO',
+          gastoCartaoId: g.id,
+          criadoEm: g.criadoEm||new Date().toISOString()
+        });
+        migrados++;
+      });
+      // Remover rascunhos _rascunho legados (substituídos por lançamentos individuais)
+      DATA.pagar = (DATA.pagar||[]).filter(function(p){ return !p._rascunho; });
+      if(migrados>0){
+        save(true);
+        console.log('Nexus v11: '+migrados+' gasto(s) de cartão migrado(s) para Contas a Pagar.');
+      }
+    }
+
+    // Executar migração ao carregar
+    migrarGastosLegados();
+
+    // ── 3. Helper: despesas do mês incluindo cartão (sem duplicidade) ──
+    // Para evitar duplicidade: os gastos de cartão entram via DATA.pagar (origem:'CARTAO')
+    // e NÃO são somados novamente via movimentacoes (pois darBaixaPagar já os adiciona lá)
+    // O dashboard usa movimentacoes para "realizado" e DATA.pagar para "a pagar"
+    // Despesas de cartão ainda não pagas (status PENDENTE) compõem o "a pagar" global
+    // Despesas de cartão pagas (darBaixaPagar) já estão em movimentacoes → sem duplic.
+    window._despesasMesComCartao = function(mesAno){
+      // Despesas efetivadas (movimentacoes — inclui baixas de cartão)
+      var movDesp = (DATA.movimentacoes||[])
+        .filter(function(x){ return x.tipoOp==='DESPESA'&&x.status!=='ANULADO'&&x.data&&x.data.startsWith(mesAno)&&x.tipo!=='Transferência'; })
+        .reduce(function(s,x){ return s+x.valor; },0);
+      // Gastos de cartão pendentes (ainda não baixados) com vencimento neste mês
+      var cartPend = (DATA.pagar||[])
+        .filter(function(p){ return p.origem==='CARTAO'&&p.status!=='PAGO'&&p.vencimento&&p.vencimento.startsWith(mesAno); })
+        .reduce(function(s,p){ return s+p.valor; },0);
+      return { movDesp: movDesp, cartPend: cartPend, total: movDesp + cartPend };
+    };
+
+    // ── 4. Patch renderDashboard: inclui gastos de cartão nas despesas do mês ──
+    var _origDash = renderDashboard;
+    renderDashboard = window.renderDashboard = function(){
+      _origDash.apply(this, arguments);
+      // Após renderizar, atualizar cards que mostram despesas do mês para incluir cartão
+      setTimeout(function(){
+        try{
+          var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+          var ma=a+'-'+(m<10?'0':'')+m;
+          var info = window._despesasMesComCartao(ma);
+          // Injetar aviso de cartão integrado no dashboard se houver gastos pendentes
+          var cartPend = info.cartPend;
+          if(cartPend<=0) return;
+          var alertId='dashCartaoAlert';
+          if(document.getElementById(alertId)) return;
+          var ms2=document.getElementById('dashMonthlySummary');
+          if(!ms2) return;
+          var alerta=document.createElement('div');
+          alerta.id=alertId;
+          alerta.className='info-block warn';
+          alerta.style.cssText='margin-bottom:10px;font-size:11.5px;';
+          alerta.innerHTML='💳 <strong>Gastos de Cartão Pendentes no Mês:</strong> '+fmtR(cartPend)+
+            ' — lançados em Contas a Pagar (venc. dia 5 do mês seguinte). '+
+            '<a style="color:var(--orange);cursor:pointer;text-decoration:underline;" onclick="navigateTo(\'pagar\')">Ver em A Pagar →</a>';
+          ms2.parentNode.insertBefore(alerta, ms2);
+        }catch(e){}
+      }, 120);
+    };
+
+    // ── 5. Patch relatórios: despesas por tipo incluem cartão ──
+    var _origRelDespTipo = window.relDespTipo;
+    window.relDespTipo = function(){
+      if(typeof _origRelDespTipo === 'function') _origRelDespTipo.apply(this, arguments);
+      setTimeout(function(){
+        try{
+          var agora=new Date(); var m=agora.getMonth()+1; var a=agora.getFullYear();
+          var ma=a+'-'+(m<10?'0':'')+m;
+          // Gastos de cartão pendentes do mês agrupados por tipo
+          var cartPorTipo={};
+          (DATA.pagar||[])
+            .filter(function(p){ return p.origem==='CARTAO'&&p.status!=='PAGO'&&p.vencimento&&p.vencimento.startsWith(ma); })
+            .forEach(function(p){ cartPorTipo[p.tipo||'Cartão']=(cartPorTipo[p.tipo||'Cartão']||0)+p.valor; });
+          if(!Object.keys(cartPorTipo).length) return;
+          var relC=document.getElementById('relContent'); if(!relC) return;
+          if(document.getElementById('relCartaoDetalhe')) return;
+          var div=document.createElement('div');
+          div.id='relCartaoDetalhe';
+          div.className='adv-report-card';
+          div.style.marginTop='12px';
+          var h='<div class="adv-report-title">💳 Gastos de Cartão Pendentes (por Tipo) — '+m+'/'+a+'</div>';
+          h+='<div class="table-wrap"><table><tr><th>Tipo</th><th style="text-align:right;">Total Pendente</th></tr>';
+          Object.entries(cartPorTipo).sort(function(a,b){return b[1]-a[1];}).forEach(function(e){
+            h+='<tr><td>'+esc(e[0])+'</td><td class="mono c-amber" style="text-align:right;">'+fmtR(e[1])+'</td></tr>';
+          });
+          h+='</table></div><div class="n9note" style="margin-top:8px;">Estes valores já estão registrados em <strong>Contas a Pagar</strong> e compõem os saldos projetados. Não são duplicados.</div>';
+          div.innerHTML=h;
+          relC.appendChild(div);
+        }catch(e){}
+      },200);
+    };
+
+    // ── 6. Garantir que gastosCartao já cadastrados via categorias antigas também geram A Pagar ──
+    //     (executado uma vez a cada navigate para o módulo cartão)
+    var _origNavTo = window.navigateTo;
+    window.navigateTo = function(mod){
+      _origNavTo.apply(this, arguments);
+      if(mod==='cartao') setTimeout(migrarGastosLegados, 50);
+    };
+
+    console.log('Nexus One v11.0: Integração financeira completa do módulo Cartão aplicada.');
+  })();
+
+  // ================================================================
   // Nexus One v10.1 — Correção Completa do Pipeline de Persistência
   // Corrige todos os caminhos de save/load/backup/restore/drive
   // ================================================================
@@ -10747,6 +10899,29 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
       // Remover rascunhos automáticos de cartão (origem legado sincronizarCartaoPagar)
       // que agora são substituídos por lançamentos individuais
       d.pagar = d.pagar.filter(function(p){ return !p._rascunho; });
+
+      // Migração v11: gastos de cartão sem lançamento individual em A Pagar → criar
+      d.gastosCartao.forEach(function(g){
+        if(g.status==='faturado') return;
+        var jaExiste = d.pagar.some(function(p){ return p.gastoCartaoId===g.id; });
+        if(jaExiste) return;
+        var gMes=g.mes||(new Date().getMonth()+1);
+        var gAno=g.ano||(new Date().getFullYear());
+        var vMes=gMes===12?1:gMes+1, vAno=gMes===12?gAno+1:gAno;
+        var venc=vAno+'-'+(vMes<10?'0':'')+vMes+'-05';
+        var sub=g.subtipo||'';
+        var desc=g.descricao||g.tipoNome||'Cartão';
+        d.pagar.push({
+          id:'PG'+Math.random().toString(36).substr(2,9).toUpperCase(),
+          vencimento:venc,
+          descricao:'💳 Cartão: '+desc+(sub?' ('+sub+')':''),
+          tipo:g.tipoNome||'CARTAO', subtipo:sub,
+          fornecedor:'Fatura Cartão', valor:g.valor||0,
+          status:'PENDENTE', despesaTipo:'variavel',
+          origem:'CARTAO', gastoCartaoId:g.id,
+          criadoEm:g.criadoEm||new Date().toISOString()
+        });
+      });
 
       return d;
     }
