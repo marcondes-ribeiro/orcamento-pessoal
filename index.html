@@ -4082,7 +4082,6 @@ th { border-bottom: 1px solid rgba(255,140,0,0.12) !important; }
     <div class="page-header">
       <div class="page-title">💳 Gastos com Cartão</div>
       <div style="display:flex;gap:8px;margin-left:auto;">
-        <button class="btn btn-primary" onclick="modalGasto()">+ Novo Gasto</button>
         <button class="btn btn-danger" onclick="zerarFatura()">🔄 Zerar Fatura</button>
       </div>
     </div>
@@ -4365,7 +4364,15 @@ function loadData(){
       }
     });
   }();
-  Object.keys(d).forEach(k=>{ if(DATA[k]===undefined||DATA[k]===null) DATA[k]=d[k]; });
+  // Migração v10: gastosCartao antigos (categoriaId) → tipoNome
+  DATA.gastosCartao.forEach(function(g){
+    if(!g.tipoNome && g.categoriaId) {
+      var cat = (DATA.categoriasCartao||[]).find(function(c){return c.id===g.categoriaId;});
+      if(cat) g.tipoNome = cat.nome;
+      else g.tipoNome = 'Outros';
+    }
+    if(!g.tipoNome) g.tipoNome = 'Outros';
+  });
   if(!DATA.config) DATA.config=d.config;
   ['nome','rendaMensal','diaFechamento','driveDismissed','googleClientId','driveConnected'].forEach(k=>{
     if(DATA.config[k]===undefined) DATA.config[k]=d.config[k]!==undefined?d.config[k]:(k==='googleClientId'?'':k==='driveConnected'?false:d.config[k]);
@@ -5327,19 +5334,26 @@ function renderPagar(){
     <input id="pfDtIni" type="date" onchange="filtrarPagar()">
     <input id="pfDtFim" type="date" onchange="filtrarPagar()">
     <select id="pfStatus" onchange="filtrarPagar()"><option value="">Todos os status</option><option value="PENDENTE" selected>Pendente</option><option value="PAGO">Pago</option></select>
+
     <select id="pfDespTipo" onchange="filtrarPagar()"><option value="">Fixa + Variável</option><option value="fixa">📌 Somente Fixas</option><option value="variavel">📊 Somente Variáveis</option></select>
     <select id="pfTipo" onchange="atualizarFiltroSubtipoPagar();filtrarPagar()"><option value="">Todos os tipos</option>${DATA.tipos.filter(t=>t.classificacao==='DESPESA').map(t=>`<option>${esc(t.nome)}</option>`).join('')}</select>
     <select id="pfSubtipo" onchange="filtrarPagar()" style="display:none"><option value="">Todos os subtipos</option></select>
     <button class="btn btn-sm" onclick="limparFiltrosPagar()">✕ Limpar</button>
     <button class="btn btn-sm btn-sky" onclick="filtrarPagarExtra('mes')">Este Mês</button>
     <button class="btn btn-sm btn-danger" onclick="filtrarPagarExtra('vencidas')">Vencidas</button>`;
+  // Garantir filtro padrão PENDENTE antes da primeira renderização
+  const _pfStatus = document.getElementById('pfStatus');
+  if(_pfStatus) _pfStatus.value = 'PENDENTE';
   filtrarPagar();
 }
 window.filtrarPagarExtra=function(f){ filtrarPagar(f); };
 function limparFiltrosPagar(){
-  ['pfBusca','pfStatus','pfDespTipo','pfTipo','pfSubtipo'].forEach(id=>{
+  ['pfBusca','pfDespTipo','pfTipo','pfSubtipo'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
+  // Restaura filtro padrão PENDENTE (não limpa status)
+  const pfSt=document.getElementById('pfStatus'); if(pfSt) pfSt.value='PENDENTE';
+  ['pfDtIni','pfDtFim'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const ps=document.getElementById('pfSubtipo'); if(ps) ps.style.display='none';
   filtrarPagar();
 }
@@ -5577,10 +5591,13 @@ function renderReceber(){
     <input id="rfBusca" placeholder="🔍 Buscar..." style="min-width:200px;" oninput="filtrarReceber()">
     <input id="rfDtIni" type="date" onchange="filtrarReceber()">
     <input id="rfDtFim" type="date" onchange="filtrarReceber()">
-    <select id="rfStatus" onchange="filtrarReceber()"><option value="">Todos</option><option value="PENDENTE">Pendente</option><option value="RECEBIDO">Recebido</option></select>
+    <select id="rfStatus" onchange="filtrarReceber()"><option value="">Todos</option><option value="PENDENTE" selected>Pendente</option><option value="RECEBIDO">Recebido</option></select>
     <select id="rfTipo" onchange="atualizarFiltroSubtipoReceber();filtrarReceber()"><option value="">Todos os tipos</option>${DATA.tipos.filter(t=>t.classificacao==='RECEITA').map(t=>`<option>${esc(t.nome)}</option>`).join('')}</select>
     <select id="rfSubtipo" onchange="filtrarReceber()" style="display:none"><option value="">Todos os subtipos</option></select>
     <button class="btn btn-sm" onclick="limparFiltrosReceber()">✕ Limpar</button>`;
+  // Garantir filtro padrão PENDENTE antes da primeira renderização
+  const _rfStatus = document.getElementById('rfStatus');
+  if(_rfStatus) _rfStatus.value = 'PENDENTE';
   filtrarReceber();
 }
 
@@ -5630,9 +5647,12 @@ function filtrarReceber(){
 }
 
 function limparFiltrosReceber(){
-  ['rfBusca','rfStatus','rfTipo','rfSubtipo'].forEach(id=>{
+  ['rfBusca','rfTipo','rfSubtipo'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
+  // Restaura filtro padrão PENDENTE (não limpa status)
+  const rfSt=document.getElementById('rfStatus'); if(rfSt) rfSt.value='PENDENTE';
+  ['rfDtIni','rfDtFim'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const rs=document.getElementById('rfSubtipo'); if(rs) rs.style.display='none';
   filtrarReceber();
 }
@@ -5760,98 +5780,171 @@ function excluirReceber(id){
 }
 
 // ================================================================
-// CARTÃO
+// CARTÃO — v10.0: Unificado com Tipos de Despesa de Configurações
 // ================================================================
-function renderCartao(){
-  const m=mes(); const a=ano();
-  const grid=document.getElementById('catGrid');
-  if(!DATA.categoriasCartao.length){
-    grid.innerHTML=`<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">💳</div><div class="empty-title">Nenhuma categoria</div><div class="empty-sub">Configure categorias em Configurações</div></div>`;
+
+// Mapeamento de emoji por nome de tipo (fallback visual)
+function getEmojiParaTipo(nome) {
+  const mapa = {
+    'Alimentação':'🍔','Moradia':'🏠','Carro/Moto':'🚗','Saúde':'💊','Educação':'📚',
+    'Lazer':'🎭','Investimento':'📈','Reforma e Construção':'🔨','Pagamento':'💵',
+    'Ajuda':'🤝','Investimentos':'💹','Financiamento Casa':'🏡','Transporte':'🚌',
+    'Vestuário':'👗','Higiene':'🧴','Supermercado':'🛒','Eletrônicos':'📱',
+    'Entretenimento':'🎬','Viagem':'✈️','Pets':'🐾','Assinaturas':'📋'
+  };
+  return mapa[nome] || '💳';
+}
+
+// Retorna o saldo gasto no cartão para um tipo de despesa no ciclo atual
+function gastoCartaoParaTipo(tipoNome, m, a) {
+  return DATA.gastosCartao
+    .filter(g => g.tipoNome === tipoNome && g.mes === m && g.ano === a)
+    .reduce((s, g) => s + g.valor, 0);
+}
+
+// Retorna previsão orçamentária para um tipo no mês atual
+function previsaoParaTipo(tipoNome, m, a) {
+  const mesAno = a + '-' + pad(m);
+  const prev = (DATA.previsoes || []).find(p => p.tipo === tipoNome && p.mesAno === mesAno);
+  return prev ? (prev.valorPrevisto || 0) : 0;
+}
+
+function renderCartao() {
+  const m = mes(); const a = ano();
+  const tiposDesp = DATA.tipos.filter(t => t.classificacao === 'DESPESA');
+  const grid = document.getElementById('catGrid');
+
+  if (!tiposDesp.length) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">💳</div><div class="empty-title">Nenhum tipo de despesa</div><div class="empty-sub">Cadastre tipos de despesa em Configurações</div></div>`;
   } else {
-    grid.innerHTML=DATA.categoriasCartao.map(cat=>{
-      const ac=DATA.gastosCartao.filter(g=>g.categoriaId===cat.id&&g.mes===m&&g.ano===a).reduce((s,g)=>s+g.valor,0);
-      const pct=cat.limite>0?(ac/cat.limite*100):0;
-      const corVal=pct>=100?'c-coral':pct>=80?'c-amber':'c-emerald';
-      const corPf=pct>=100?'pf-coral':pct>=80?'pf-amber':'pf-emerald';
-      return `<div class="cat-card">
-        <div class="cat-emoji">${esc(cat.emoji||'💳')}</div>
-        <div class="cat-name">${esc(cat.nome)}</div>
+    grid.innerHTML = tiposDesp.map(tipo => {
+      const ac = gastoCartaoParaTipo(tipo.nome, m, a);
+      const limite = previsaoParaTipo(tipo.nome, m, a);
+      const pct = limite > 0 ? (ac / limite * 100) : 0;
+      const corVal = pct >= 100 ? 'c-coral' : pct >= 80 ? 'c-amber' : 'c-emerald';
+      const corPf = pct >= 100 ? 'pf-coral' : pct >= 80 ? 'pf-amber' : 'pf-emerald';
+      const emoji = getEmojiParaTipo(tipo.nome);
+      return `<div class="cat-card" onclick="modalGastoCartao('${esc(tipo.nome)}')" title="Clique para registrar gasto em ${esc(tipo.nome)}" style="cursor:pointer;">
+        <div class="cat-emoji">${emoji}</div>
+        <div class="cat-name">${esc(tipo.nome)}</div>
         <div class="cat-val ${corVal}">${fmtR(ac)}</div>
-        <div class="progress" style="margin-top:8px;"><div class="progress-fill ${corPf}" style="width:${Math.min(pct,100)}%"></div></div>
-        <div style="font-size:9px;color:var(--text3);margin-top:4px;">${cat.limite>0?pct.toFixed(0)+'% de '+fmtR(cat.limite):'Sem limite'}</div>
+        <div class="progress" style="margin-top:8px;"><div class="progress-fill ${corPf}" style="width:${Math.min(pct, 100)}%"></div></div>
+        <div style="font-size:9px;color:var(--text3);margin-top:4px;">${limite > 0 ? pct.toFixed(0) + '% de ' + fmtR(limite) : 'Sem previsão'}</div>
       </div>`;
     }).join('');
   }
-  let totalGeral=0;
-  let hRes=`<table><tr><th>Categoria</th><th style="text-align:right;">Acumulado</th><th style="text-align:right;">Limite</th><th>%</th><th>Status</th></tr>`;
-  DATA.categoriasCartao.forEach(cat=>{
-    const ac=DATA.gastosCartao.filter(g=>g.categoriaId===cat.id&&g.mes===m&&g.ano===a).reduce((s,g)=>s+g.valor,0);
-    totalGeral+=ac;
-    const pct=cat.limite>0?(ac/cat.limite*100):0;
-    const st=pct>=100?`<span class="badge bg-coral">🔴 Ultrapassado</span>`:pct>=80?`<span class="badge bg-amber">⚠️ 80%+</span>`:`<span class="badge bg-emerald">✅ OK</span>`;
-    hRes+=`<tr><td>${esc(cat.emoji||'')} ${esc(cat.nome)}</td><td class="mono c-amber" style="text-align:right;">${fmtR(ac)}</td><td class="mono" style="text-align:right;color:var(--text2);">${cat.limite>0?fmtR(cat.limite):'—'}</td><td style="font-size:11px;">${cat.limite>0?pct.toFixed(1)+'%':'—'}</td><td>${st}</td></tr>`;
-  });
-  if(!DATA.categoriasCartao.length) hRes+=`<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text3);">Nenhuma categoria</td></tr>`;
-  hRes+=`<tr style="font-weight:700;border-top:2px solid var(--border);"><td>TOTAL</td><td class="mono c-amber" style="text-align:right;">${fmtR(totalGeral)}</td><td colspan="3"></td></tr></table>`;
-  document.getElementById('cartaoResumo').innerHTML=hRes;
 
-  let chartWrap=document.getElementById('cartaoChartWrap');
-  if(!chartWrap){
-    chartWrap=document.createElement('div');
-    chartWrap.id='cartaoChartWrap';
-    chartWrap.className='cartao-chart-card';
-    chartWrap.innerHTML='<div class="chart-title">📊 Gastos por Categoria — Mês Atual</div><canvas id="cCartaoCat" height="160"></canvas>';
+  let totalGeral = 0;
+  let hRes = `<table><tr><th>Tipo</th><th style="text-align:right;">Acumulado</th><th style="text-align:right;">Previsão</th><th>%</th><th>Status</th></tr>`;
+  tiposDesp.forEach(tipo => {
+    const ac = gastoCartaoParaTipo(tipo.nome, m, a);
+    totalGeral += ac;
+    const limite = previsaoParaTipo(tipo.nome, m, a);
+    const pct = limite > 0 ? (ac / limite * 100) : 0;
+    const st = pct >= 100 ? `<span class="badge bg-coral">🔴 Ultrapassado</span>` : pct >= 80 ? `<span class="badge bg-amber">⚠️ 80%+</span>` : `<span class="badge bg-emerald">✅ OK</span>`;
+    hRes += `<tr><td>${getEmojiParaTipo(tipo.nome)} ${esc(tipo.nome)}</td><td class="mono c-amber" style="text-align:right;">${fmtR(ac)}</td><td class="mono" style="text-align:right;color:var(--text2);">${limite > 0 ? fmtR(limite) : '—'}</td><td style="font-size:11px;">${limite > 0 ? pct.toFixed(1) + '%' : '—'}</td><td>${st}</td></tr>`;
+  });
+  if (!tiposDesp.length) hRes += `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text3);">Nenhum tipo de despesa cadastrado</td></tr>`;
+  hRes += `<tr style="font-weight:700;border-top:2px solid var(--border);"><td>TOTAL</td><td class="mono c-amber" style="text-align:right;">${fmtR(totalGeral)}</td><td colspan="3"></td></tr></table>`;
+  document.getElementById('cartaoResumo').innerHTML = hRes;
+
+  let chartWrap = document.getElementById('cartaoChartWrap');
+  if (!chartWrap) {
+    chartWrap = document.createElement('div');
+    chartWrap.id = 'cartaoChartWrap';
+    chartWrap.className = 'cartao-chart-card';
+    chartWrap.innerHTML = '<div class="chart-title">📊 Gastos por Tipo — Mês Atual</div><canvas id="cCartaoCat" height="160"></canvas>';
     document.getElementById('cartaoResumo').parentNode.appendChild(chartWrap);
   }
-  setTimeout(()=>{
-    if(charts.cartaoCat) charts.cartaoCat.destroy();
-    const ctx=document.getElementById('cCartaoCat')?.getContext('2d');
-    if(!ctx) return;
-    const labels=DATA.categoriasCartao.map(c=>c.emoji+' '+c.nome);
-    const valores=DATA.categoriasCartao.map(cat=>DATA.gastosCartao.filter(g=>g.categoriaId===cat.id&&g.mes===m&&g.ano===a).reduce((s,g)=>s+g.valor,0));
-    const limites=DATA.categoriasCartao.map(cat=>cat.limite||0);
-    const cors=valores.map((v,i)=>limites[i]>0&&v>=limites[i]?'rgba(255,79,110,.8)':limites[i]>0&&v/limites[i]>=.8?'rgba(255,182,39,.8)':'rgba(0,245,160,.8)');
-    charts.cartaoCat=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Gasto',data:valores,backgroundColor:cors,borderRadius:8},{label:'Limite',data:limites,backgroundColor:'rgba(106,122,158,.15)',borderRadius:8,borderColor:'rgba(106,122,158,.4)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{labels:{color:'#6a7a9e',font:{size:10},boxWidth:10}}},scales:{x:{ticks:{color:'#2e3d60',font:{size:9}},grid:{color:'rgba(26,34,64,.4)'}},y:{ticks:{color:'#2e3d60',font:{size:9},callback:v=>'R$'+v},grid:{color:'rgba(26,34,64,.4)'}}}}});
-  },200);
+  setTimeout(() => {
+    if (charts.cartaoCat) charts.cartaoCat.destroy();
+    const ctx = document.getElementById('cCartaoCat')?.getContext('2d');
+    if (!ctx) return;
+    const labels = tiposDesp.map(t => getEmojiParaTipo(t.nome) + ' ' + t.nome);
+    const valores = tiposDesp.map(t => gastoCartaoParaTipo(t.nome, m, a));
+    const limites = tiposDesp.map(t => previsaoParaTipo(t.nome, m, a));
+    const cors = valores.map((v, i) => limites[i] > 0 && v >= limites[i] ? 'rgba(255,79,110,.8)' : limites[i] > 0 && v / limites[i] >= .8 ? 'rgba(255,182,39,.8)' : 'rgba(0,245,160,.8)');
+    charts.cartaoCat = new Chart(ctx, {type:'bar',data:{labels,datasets:[{label:'Gasto',data:valores,backgroundColor:cors,borderRadius:8},{label:'Previsão',data:limites,backgroundColor:'rgba(106,122,158,.15)',borderRadius:8,borderColor:'rgba(106,122,158,.4)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{labels:{color:'#6a7a9e',font:{size:10},boxWidth:10}}},scales:{x:{ticks:{color:'#2e3d60',font:{size:9}},grid:{color:'rgba(26,34,64,.4)'}},y:{ticks:{color:'#2e3d60',font:{size:9},callback:v=>'R$'+v},grid:{color:'rgba(26,34,64,.4)'}}}}});
+  }, 200);
 }
 
-function modalGasto(){
-  if(!DATA.categoriasCartao.length) return toast('⚠️ Crie categorias em Configurações','var(--amber)');
-  const h=`
-  <div style="margin-bottom:12px;font-size:12px;color:var(--text2);">Selecione a categoria:</div>
-  <div class="cat-grid" style="margin-bottom:14px;">
-    ${DATA.categoriasCartao.map(cat=>`<div class="cat-card" onclick="selCatG('${cat.id}')" id="gcCard_${cat.id}"><div class="cat-emoji">${esc(cat.emoji||'💳')}</div><div class="cat-name">${esc(cat.nome)}</div></div>`).join('')}
-  </div>
-  <input type="hidden" id="gCatId">
+// Modal de lançamento de gasto no cartão — acessado pelo clique no card do tipo
+function modalGastoCartao(tipoNome) {
+  const tiposDesp = DATA.tipos.filter(t => t.classificacao === 'DESPESA');
+  const tipo = tiposDesp.find(t => t.nome === tipoNome);
+  if (!tipo) return toast('⚠️ Tipo não encontrado', 'var(--amber)');
+  const subtipos = getSubtipos(tipoNome);
+  const m2 = mes(); const a2 = ano();
+  const acum = gastoCartaoParaTipo(tipoNome, m2, a2);
+  const limite = previsaoParaTipo(tipoNome, m2, a2);
+  const emoji = getEmojiParaTipo(tipoNome);
+
+  const subtiposHtml = subtipos.length
+    ? `<div class="mrow single"><div><label>Subtipo</label><select id="gcSubtipo"><option value="">— Selecione —</option>${subtipos.map(s => `<option value="${esc(s.nome)}">${esc(s.nome)}</option>`).join('')}</select></div></div>`
+    : '';
+
+  const h = `
+  <div class="info-block success">${emoji} <strong>${esc(tipoNome)}</strong> — Acumulado este mês: <strong>${fmtR(acum)}</strong>${limite > 0 ? ' / Previsão: <strong>' + fmtR(limite) + '</strong>' : ''}</div>
   <div class="mrow">
-    <div><label>Valor R$</label><input id="gVal" type="number" step="0.01"></div>
-    <div><label>Data</label><input id="gDt" type="date" value="${hoje()}"></div>
+    <div><label>Valor R$</label><input id="gcVal" type="number" step="0.01" min="0.01" autofocus></div>
+    <div><label>Data</label><input id="gcDt" type="date" value="${hoje()}"></div>
   </div>
-  <div class="mrow single"><div><label>Descrição</label><input id="gDesc" placeholder="Descrição do item"></div></div>
-  <div id="gPreview" style="font-size:11px;color:var(--text2);margin-top:8px;"></div>`;
-  openModal('Novo Gasto — Cartão','💳',h,()=>{
-    const catId=document.getElementById('gCatId').value;
-    const val=parseFloat(document.getElementById('gVal').value);
-    if(!catId||!val||val<=0) return toast('⚠️ Selecione categoria e informe valor','var(--amber)');
-    const data=document.getElementById('gDt').value;
-    const m2=new Date(data).getMonth()+1; const a2=new Date(data).getFullYear();
-    DATA.gastosCartao.push({id:genId('GC'),categoriaId:catId,valor:val,data,mes:m2,ano:a2,descricao:document.getElementById('gDesc').value});
-    const mesAnoStr=a2+'-'+pad(m2);
-    const ex=DATA.pagar.find(p=>p.descricao==='💳 Cartão — '+mesAnoStr&&p.tipo==='CARTÃO');
-    if(ex) ex.valor+=val;
-    else DATA.pagar.push({id:genId('PG'),vencimento:a2+'-'+pad(m2)+'-'+pad(DATA.config.diaFechamento||15),descricao:'💳 Cartão — '+mesAnoStr,tipo:'CARTÃO',fornecedor:'Fatura Cartão',valor:val,status:'PENDENTE',criadoEm:new Date().toISOString()});
-    save(true); renderCartao(); toast('✅ Gasto registrado'); closeAllModals();
+  ${subtiposHtml}
+  <div class="mrow single"><div><label>Descrição</label><input id="gcDesc" placeholder="Descrição do gasto"></div></div>`;
+
+  openModal(`${emoji} ${tipoNome} — Registrar Gasto`, '💳', h, () => {
+    const val = parseFloat(document.getElementById('gcVal').value);
+    if (!val || val <= 0) return toast('⚠️ Informe o valor do gasto', 'var(--amber)');
+    const dataGasto = document.getElementById('gcDt').value;
+    const gMes = new Date(dataGasto).getMonth() + 1;
+    const gAno = new Date(dataGasto).getFullYear();
+    const subtipo = document.getElementById('gcSubtipo')?.value || '';
+    const descricao = document.getElementById('gcDesc').value || tipoNome;
+
+    // 1. Registrar no gastosCartao (com tipoNome para lookup unificado)
+    const novoGasto = {
+      id: genId('GC'),
+      tipoNome: tipoNome,
+      subtipo: subtipo,
+      // Retrocompatibilidade: mantém categoriaId se categoriasCartao existir
+      categoriaId: (DATA.categoriasCartao || []).find(c => c.nome === tipoNome)?.id || null,
+      valor: val,
+      data: dataGasto,
+      mes: gMes,
+      ano: gAno,
+      descricao: descricao,
+      status: 'pendente'
+    };
+    DATA.gastosCartao.push(novoGasto);
+
+    // 2. Registrar individualmente em Contas a Pagar (vencimento: dia 5 do mês seguinte)
+    const vencMes = gMes === 12 ? 1 : gMes + 1;
+    const vencAno = gMes === 12 ? gAno + 1 : gAno;
+    const vencimento = vencAno + '-' + pad(vencMes) + '-05';
+    DATA.pagar.push({
+      id: genId('PG'),
+      vencimento: vencimento,
+      descricao: '💳 Cartão: ' + descricao + (subtipo ? ' (' + subtipo + ')' : ''),
+      tipo: tipoNome,
+      subtipo: subtipo,
+      fornecedor: 'Fatura Cartão',
+      valor: val,
+      status: 'PENDENTE',
+      despesaTipo: 'variavel',
+      origem: 'CARTAO',
+      gastoCartaoId: novoGasto.id,
+      criadoEm: new Date().toISOString()
+    });
+
+    save(true);
+    renderCartao();
+    toast('✅ Gasto registrado em ' + tipoNome + (subtipo ? ' / ' + subtipo : ''));
+    closeAllModals();
   });
-  window.selCatG=function(catId){
-    document.getElementById('gCatId').value=catId;
-    document.querySelectorAll('[id^="gcCard_"]').forEach(el=>el.classList.remove('sel'));
-    document.getElementById('gcCard_'+catId)?.classList.add('sel');
-    const cat=DATA.categoriasCartao.find(c=>c.id===catId);
-    const m2=mes(); const a2=ano();
-    const acum=DATA.gastosCartao.filter(g=>g.categoriaId===catId&&g.mes===m2&&g.ano===a2).reduce((s,g)=>s+g.valor,0);
-    document.getElementById('gPreview').innerHTML=`Acumulado: <strong>${fmtR(acum)}</strong>${cat?.limite>0?' / Limite: '+fmtR(cat.limite):''}`;
-  };
 }
+
+// Mantém alias para retrocompatibilidade com código antigo que chamava modalGasto()
+function modalGasto() { toast('ℹ️ Use os cards de tipo para registrar gastos', 'var(--orange)'); }
 
 function zerarFatura(){
   const m2=mes(); const a2=ano();
@@ -10331,7 +10424,457 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
   };
 
   DATA=normalizeBackupData(DATA);
+  // Migração v10: garantir tipoNome em todos os gastosCartao herdados
+  DATA.gastosCartao.forEach(function(g){
+    if(!g.tipoNome && g.categoriaId) {
+      var cat=(DATA.categoriasCartao||[]).find(function(c){return c.id===g.categoriaId;});
+      g.tipoNome = cat ? cat.nome : 'Outros';
+    }
+    if(!g.tipoNome) g.tipoNome='Outros';
+  });
   console.log('Nexus One v9.1 aplicado: backup/importacao local e Drive normalizados para todos os modulos.');
+})();
+</script>
+<script>
+// ================================================================
+// Nexus One v10.0 — Módulo Cartão Unificado com Tipos de Despesa
+// Sobrescreve renderCartao e zerarFatura (versão final definitiva)
+// ================================================================
+(function nexusCartaoV10(){
+  function _getEmojiTipo(nome){
+    var m={'Alimentação':'🍔','Moradia':'🏠','Carro/Moto':'🚗','Transporte':'🚌','Saúde':'💊',
+      'Educação':'📚','Lazer':'🎭','Investimento':'📈','Investimentos':'💹',
+      'Reforma e Construção':'🔨','Pagamento':'💵','Ajuda':'🤝','Financiamento Casa':'🏡',
+      'Telecom':'📱','Vestuário':'👗','Parcelamento':'📋','CARTÃO':'💳','CARTAO':'💳'};
+    return m[nome]||'💳';
+  }
+  function _gastoTipo(tipoNome,m,a){
+    return (DATA.gastosCartao||[]).filter(function(g){
+      return g.tipoNome===tipoNome && g.mes===m && g.ano===a && g.status!=='faturado';
+    }).reduce(function(s,g){return s+(g.valor||0);},0);
+  }
+  function _prevTipo(tipoNome,m,a){
+    var key=a+'-'+(m<10?'0':'')+m;
+    var p=(DATA.previsoes||[]).find(function(x){return x.tipo===tipoNome&&x.mesAno===key;});
+    return p?(p.valorPrevisto||0):0;
+  }
+
+  // === renderCartao FINAL ===
+  window.renderCartao=function(){
+    var m2=mes(), a2=ano();
+    var tiposDesp=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+    var grid=document.getElementById('catGrid'); if(!grid) return;
+    var resumo=document.getElementById('cartaoResumo');
+
+    // Remover barra de info legada para evitar duplicação
+    var oldBar=document.getElementById('cartaoInfoBar'); if(oldBar) oldBar.remove();
+
+    // Totais gerais
+    var totalAcum=tiposDesp.reduce(function(s,t){return s+_gastoTipo(t.nome,m2,a2);},0);
+    var totalPrev=tiposDesp.reduce(function(s,t){return s+_prevTipo(t.nome,m2,a2);},0);
+    var pctGeral=totalPrev>0?(totalAcum/totalPrev*100):0;
+    var corGeral=pctGeral>=100?'var(--coral)':pctGeral>=80?'var(--amber)':'var(--emerald)';
+
+    // Info bar com faturas
+    var hist=(DATA.historicoFatura||[]).slice().sort(function(a,b){return (b.dataFechamento||'').localeCompare(a.dataFechamento||'');});
+    var fatAnt=hist[0]||null;
+    var top=document.createElement('div'); top.id='cartaoInfoBar';
+    top.innerHTML='<div class="n9grid" style="margin-bottom:16px;">'+
+      '<div class="n9metric"><div class="n9lbl">Fatura Ativa</div><div class="n9val c-sky">'+(m2<10?'0':'')+m2+'/'+a2+'</div><div class="n9note">Ciclo em aberto</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Fatura Anterior</div><div class="n9val c-amber">'+fmtR(fatAnt?fatAnt.total:0)+'</div><div class="n9note">'+(fatAnt?(fatAnt.mes<10?'0':'')+fatAnt.mes+'/'+fatAnt.ano:'Sem histórico')+'</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Fatura Atual</div><div class="n9val c-emerald">'+fmtR(totalAcum)+'</div><div class="n9note">Total acumulado</div></div>'+
+      '<div class="n9metric"><div class="n9lbl">Previsão Total</div><div class="n9val" style="color:'+corGeral+'">'+fmtR(totalPrev)+'</div><div class="n9note">'+(totalPrev>0?pctGeral.toFixed(0)+'% consumido':'Sem previsão')+'</div></div>'+
+    '</div>';
+    grid.parentNode.insertBefore(top, grid);
+
+    // Grid de tipos clicáveis
+    if(!tiposDesp.length){
+      grid.innerHTML='<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">💳</div><div class="empty-title">Nenhum tipo de despesa</div><div class="empty-sub">Cadastre tipos de despesa em Configurações para usar o cartão</div></div>';
+    } else {
+      grid.innerHTML=tiposDesp.map(function(tipo){
+        var ac=_gastoTipo(tipo.nome,m2,a2);
+        var lim=_prevTipo(tipo.nome,m2,a2);
+        var pct=lim>0?(ac/lim*100):0;
+        var corVal=pct>=100?'c-coral':pct>=80?'c-amber':'c-emerald';
+        var corPf=pct>=100?'pf-coral':pct>=80?'pf-amber':'pf-emerald';
+        var emoji=_getEmojiTipo(tipo.nome);
+        return '<div class="cat-card" onclick="modalGastoCartaoV10(\''+esc(tipo.nome)+'\')" title="Clique para registrar gasto em '+esc(tipo.nome)+'" style="cursor:pointer;position:relative;">'+
+          '<div class="cat-emoji">'+emoji+'</div>'+
+          '<div class="cat-name">'+esc(tipo.nome)+'</div>'+
+          '<div class="cat-val '+corVal+'">'+fmtR(ac)+'</div>'+
+          '<div class="progress" style="margin-top:8px;"><div class="progress-fill '+corPf+'" style="width:'+Math.min(pct,100)+'%"></div></div>'+
+          '<div style="font-size:9px;color:var(--text3);margin-top:4px;">'+(lim>0?pct.toFixed(0)+'% de '+fmtR(lim):'Sem previsão')+'</div>'+
+        '</div>';
+      }).join('');
+    }
+
+    // Tabela resumo
+    var totalGeral=0;
+    var h='<table><tr><th>Tipo</th><th style="text-align:right;">Acumulado</th><th style="text-align:right;">Previsão</th><th style="text-align:right;">Diferença</th><th>%</th><th>Status</th></tr>';
+    tiposDesp.forEach(function(tipo){
+      var ac=_gastoTipo(tipo.nome,m2,a2); totalGeral+=ac;
+      var lim=_prevTipo(tipo.nome,m2,a2);
+      var diff=lim>0?lim-ac:null;
+      var pct=lim>0?(ac/lim*100):0;
+      var st=pct>=100?'<span class="badge bg-coral">🔴 Ultrapassado</span>':pct>=80?'<span class="badge bg-amber">⚠️ 80%+</span>':'<span class="badge bg-emerald">✅ OK</span>';
+      h+='<tr>'+
+        '<td>'+_getEmojiTipo(tipo.nome)+' '+esc(tipo.nome)+'</td>'+
+        '<td class="mono c-amber" style="text-align:right;">'+fmtR(ac)+'</td>'+
+        '<td class="mono" style="text-align:right;color:var(--text2);">'+(lim>0?fmtR(lim):'—')+'</td>'+
+        '<td class="mono" style="text-align:right;color:'+(diff===null?'var(--text3)':diff>=0?'var(--emerald)':'var(--coral)')+';">'+(diff===null?'—':(diff>=0?'+':'')+fmtR(diff))+'</td>'+
+        '<td style="font-size:11px;">'+(lim>0?pct.toFixed(1)+'%':'—')+'</td>'+
+        '<td>'+st+'</td></tr>';
+    });
+    if(!tiposDesp.length) h+='<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text3);">Nenhum tipo cadastrado</td></tr>';
+    h+='<tr class="tr-totais"><td>TOTAL</td><td class="mono c-amber" style="text-align:right;">'+fmtR(totalGeral)+'</td><td class="mono" style="text-align:right;">'+(totalPrev>0?fmtR(totalPrev):'—')+'</td><td colspan="3"></td></tr></table>';
+    if(resumo) resumo.innerHTML=h;
+
+    // Lista de lançamentos do mês
+    var gastosMes=(DATA.gastosCartao||[]).filter(function(g){return g.mes===m2&&g.ano===a2&&g.status!=='faturado';}).sort(function(a,b){return (b.data||'').localeCompare(a.data||'');});
+    if(gastosMes.length && resumo){
+      var extra='<div style="margin-top:20px;" id="cartaoPendentesWrap">'+
+        '<div class="sec-header" style="margin-top:0;"><span class="sec-title">📋 Lançamentos do Mês</span><div class="sec-line"></div></div>'+
+        '<div class="table-wrap"><table><tr><th>Data</th><th>Tipo</th><th>Subtipo</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Ações</th></tr>';
+      gastosMes.forEach(function(g){
+        extra+='<tr>'+
+          '<td>'+fmtD(g.data||'')+'</td>'+
+          '<td style="font-size:11px;">'+_getEmojiTipo(g.tipoNome||'')+' '+esc(g.tipoNome||'—')+'</td>'+
+          '<td style="font-size:10px;">'+(g.subtipo?'<span class="subtipo-tag">'+esc(g.subtipo)+'</span>':'<span style="color:var(--text4);">—</span>')+'</td>'+
+          '<td>'+esc(g.descricao||'—')+'</td>'+
+          '<td class="mono c-amber" style="text-align:right;">'+fmtR(g.valor)+'</td>'+
+          '<td style="white-space:nowrap;"><button class="btn btn-xs btn-edit" onclick="editarGastoCartaoV10(\''+g.id+'\')">✏</button> <button class="btn btn-xs btn-danger" onclick="excluirGastoCartaoV10(\''+g.id+'\')">🗑</button></td></tr>';
+      });
+      var totLanc=gastosMes.reduce(function(s,g){return s+(g.valor||0);},0);
+      extra+='<tr class="tr-totais"><td colspan="4" style="color:var(--orange);">TOTAL ('+gastosMes.length+')</td><td class="mono c-amber" style="text-align:right;font-weight:800;">'+fmtR(totLanc)+'</td><td></td></tr>';
+      extra+='</table></div></div>';
+      resumo.innerHTML+=extra;
+    }
+
+    // Gráfico
+    var chartWrap=document.getElementById('cartaoChartWrap');
+    if(!chartWrap){
+      chartWrap=document.createElement('div');
+      chartWrap.id='cartaoChartWrap';
+      chartWrap.className='cartao-chart-card';
+      chartWrap.innerHTML='<div class="chart-title">📊 Gastos por Tipo — Mês Atual</div><canvas id="cCartaoCat" height="160"></canvas>';
+      if(resumo) resumo.parentNode.appendChild(chartWrap);
+    }
+    setTimeout(function(){
+      if(charts.cartaoCat) charts.cartaoCat.destroy();
+      var ctx=document.getElementById('cCartaoCat'); if(!ctx) return; ctx=ctx.getContext('2d');
+      var labels=tiposDesp.map(function(t){return _getEmojiTipo(t.nome)+' '+t.nome;});
+      var valores=tiposDesp.map(function(t){return _gastoTipo(t.nome,m2,a2);});
+      var limites=tiposDesp.map(function(t){return _prevTipo(t.nome,m2,a2);});
+      var cors=valores.map(function(v,i){return limites[i]>0&&v>=limites[i]?'rgba(255,79,110,.8)':limites[i]>0&&v/limites[i]>=.8?'rgba(255,182,39,.8)':'rgba(0,245,160,.8)';});
+      charts.cartaoCat=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'Gasto',data:valores,backgroundColor:cors,borderRadius:8},{label:'Previsão',data:limites,backgroundColor:'rgba(106,122,158,.15)',borderRadius:8,borderColor:'rgba(106,122,158,.4)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{labels:{color:'#6a7a9e',font:{size:10},boxWidth:10}}},scales:{x:{ticks:{color:'#2e3d60',font:{size:9}},grid:{color:'rgba(26,34,64,.4)'}},y:{ticks:{color:'#2e3d60',font:{size:9},callback:function(v){return 'R$'+v;}},grid:{color:'rgba(26,34,64,.4)'}}}}});
+    },200);
+  };
+
+  // === Modal de registro de gasto (clique no card) ===
+  window.modalGastoCartaoV10=function(tipoNome){
+    var tiposDesp=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+    var tipo=tiposDesp.find(function(t){return t.nome===tipoNome;});
+    if(!tipo) return toast('⚠️ Tipo não encontrado','var(--amber)');
+    var m2=mes(), a2=ano();
+    var acum=_gastoTipo(tipoNome,m2,a2);
+    var lim=_prevTipo(tipoNome,m2,a2);
+    var emoji=_getEmojiTipo(tipoNome);
+    var subs=(DATA.subTipos||[]).filter(function(s){return s.tipoNome===tipoNome;});
+    var subHtml=subs.length?'<div class="mrow single"><div><label>Subtipo</label><select id="gcSubtipo10"><option value="">— Selecione —</option>'+subs.map(function(s){return '<option value="'+esc(s.nome)+'">'+esc(s.nome)+'</option>';}).join('')+'</select></div></div>':'';
+    var h='<div class="info-block success">'+emoji+' <strong>'+esc(tipoNome)+'</strong> — Acumulado: <strong>'+fmtR(acum)+'</strong>'+(lim>0?' / Previsão: <strong>'+fmtR(lim)+'</strong>':'')+'</div>'+
+      '<div class="mrow"><div><label>Valor R$</label><input id="gcVal10" type="number" step="0.01" min="0.01" autofocus></div><div><label>Data</label><input id="gcDt10" type="date" value="'+hoje()+'"></div></div>'+
+      subHtml+
+      '<div class="mrow single"><div><label>Descrição</label><input id="gcDesc10" placeholder="Descrição do gasto"></div></div>';
+    openModal(emoji+' '+tipoNome+' — Registrar Gasto','💳',h,function(){
+      var val=parseFloat(document.getElementById('gcVal10').value);
+      if(!val||val<=0) return toast('⚠️ Informe o valor','var(--amber)');
+      var dataGasto=document.getElementById('gcDt10').value;
+      var gMes=new Date(dataGasto).getMonth()+1, gAno=new Date(dataGasto).getFullYear();
+      var subtipo=(document.getElementById('gcSubtipo10')||{}).value||'';
+      var desc=document.getElementById('gcDesc10').value||tipoNome;
+      var novoGasto={
+        id:genId('GC'), tipoNome:tipoNome, subtipo:subtipo,
+        categoriaId:(DATA.categoriasCartao||[]).find(function(c){return c.nome===tipoNome;})||null,
+        valor:val, data:dataGasto, mes:gMes, ano:gAno, descricao:desc, status:'pendente',
+        criadoEm:new Date().toISOString()
+      };
+      DATA.gastosCartao.push(novoGasto);
+      // Registrar individualmente em Contas a Pagar — vencimento dia 5 do mês seguinte
+      var vMes=gMes===12?1:gMes+1, vAno=gMes===12?gAno+1:gAno;
+      var venc=vAno+'-'+(vMes<10?'0':'')+vMes+'-05';
+      DATA.pagar.push({
+        id:genId('PG'), vencimento:venc,
+        descricao:'💳 Cartão: '+desc+(subtipo?' ('+subtipo+')':''),
+        tipo:tipoNome, subtipo:subtipo, fornecedor:'Fatura Cartão',
+        valor:val, status:'PENDENTE', despesaTipo:'variavel',
+        origem:'CARTAO', gastoCartaoId:novoGasto.id,
+        criadoEm:new Date().toISOString()
+      });
+      save(true); renderCartao(); toast('✅ Gasto registrado em '+tipoNome+(subtipo?' / '+subtipo:'')); closeAllModals();
+    });
+  };
+  // Compat alias (se algum código legado chamar modalGasto ainda)
+  window.modalGasto=function(){ toast('ℹ️ Clique no card do tipo de despesa para registrar um gasto','var(--orange)'); };
+
+  // === Editar gasto individual do cartão ===
+  window.editarGastoCartaoV10=function(id){
+    var g=(DATA.gastosCartao||[]).find(function(x){return x.id===id;}); if(!g) return;
+    var tiposDesp=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+    var subs=(DATA.subTipos||[]).filter(function(s){return s.tipoNome===(g.tipoNome||'');});
+    var subHtml=subs.length?'<div class="mrow single"><div><label>Subtipo</label><select id="egSubEdit"><option value="">—</option>'+subs.map(function(s){return '<option value="'+esc(s.nome)+'" '+(s.nome===g.subtipo?'selected':'')+'>'+esc(s.nome)+'</option>';}).join('')+'</select></div></div>':'';
+    var h='<div class="mrow"><div><label>Valor R$</label><input id="egValEdit" type="number" step="0.01" value="'+g.valor+'"></div><div><label>Data</label><input id="egDtEdit" type="date" value="'+(g.data||hoje())+'"></div></div>'+
+      '<div class="mrow single"><div><label>Tipo</label><select id="egTipoEdit">'+tiposDesp.map(function(t){return '<option value="'+esc(t.nome)+'" '+(t.nome===g.tipoNome?'selected':'')+'>'+esc(t.nome)+'</option>';}).join('')+'</select></div></div>'+
+      subHtml+
+      '<div class="mrow single"><div><label>Descrição</label><input id="egDescEdit" value="'+esc(g.descricao||'')+'"></div></div>';
+    openModal('✏️ Editar Gasto','✏️',h,function(){
+      var novoValor=parseFloat(document.getElementById('egValEdit').value)||g.valor;
+      var novoTipo=(document.getElementById('egTipoEdit')||{}).value||g.tipoNome;
+      var novoSub=(document.getElementById('egSubEdit')||{}).value||'';
+      var diff=novoValor-g.valor;
+      g.valor=novoValor; g.tipoNome=novoTipo; g.subtipo=novoSub;
+      g.data=document.getElementById('egDtEdit').value||g.data;
+      g.descricao=document.getElementById('egDescEdit').value||g.descricao;
+      // Atualizar o lançamento correspondente em Contas a Pagar se existir
+      var pgRef=(DATA.pagar||[]).find(function(p){return p.gastoCartaoId===g.id;});
+      if(pgRef){ pgRef.valor=novoValor; pgRef.tipo=novoTipo; pgRef.subtipo=novoSub; pgRef.descricao='💳 Cartão: '+(g.descricao||novoTipo)+(novoSub?' ('+novoSub+')':''); }
+      save(true); renderCartao(); toast('✅ Gasto atualizado'); closeAllModals();
+    },'Salvar');
+  };
+
+  // === Excluir gasto individual do cartão ===
+  window.excluirGastoCartaoV10=function(id){
+    if(!confirm('Excluir este gasto? O lançamento correspondente em Contas a Pagar também será removido.')) return;
+    // Remover o lançamento em A Pagar gerado por este gasto
+    DATA.pagar=(DATA.pagar||[]).filter(function(p){return p.gastoCartaoId!==id;});
+    DATA.gastosCartao=(DATA.gastosCartao||[]).filter(function(g){return g.id!==id;});
+    save(true); renderCartao(); toast('🗑 Gasto excluído');
+  };
+
+  // === Zerar Fatura — preserva lançamentos individuais em A Pagar, move gastos para histórico ===
+  window.zerarFatura=function(){
+    var m2=mes(), a2=ano();
+    var pendentes=(DATA.gastosCartao||[]).filter(function(g){return g.mes===m2&&g.ano===a2&&g.status!=='faturado';});
+    var total=pendentes.reduce(function(s,g){return s+(g.valor||0);},0);
+    if(!total){ showToast('⚠️ Nenhum gasto pendente na fatura atual','var(--amber)'); return; }
+    var resumoTipos='';
+    var tiposDesp=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+    tiposDesp.forEach(function(t){
+      var ac=pendentes.filter(function(g){return g.tipoNome===t.nome;}).reduce(function(s,g){return s+(g.valor||0);},0);
+      if(ac>0) resumoTipos+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);"><span>'+_getEmojiTipo(t.nome)+' '+esc(t.nome)+'</span><span class="mono c-amber">'+fmtR(ac)+'</span></div>';
+    });
+    var h='<div class="info-block warn"><strong>Total da fatura atual: '+fmtR(total)+'</strong><br><small>Os lançamentos individuais em Contas a Pagar (vencimento dia 5 do próximo mês) já foram registrados no momento do gasto. Esta ação apenas fecha o ciclo do cartão.</small></div>'+
+      '<div style="margin-top:12px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:8px;">Resumo por tipo</div>'+resumoTipos+'</div>';
+    openModal('Zerar Fatura','🔄',h,function(){
+      var fid=genId('FAT');
+      pendentes.forEach(function(g){g.status='faturado';g.faturaId=fid;});
+      DATA.historicoFatura.push({id:fid,mes:m2,ano:a2,total:total,dataFechamento:new Date().toISOString()});
+      // Remove rascunhos automáticos legacy (sincronizarCartaoPagar) se houver
+      DATA.pagar=(DATA.pagar||[]).filter(function(p){return !(p._rascunho===true&&p._cicloMes===m2&&p._cicloAno===a2);});
+      save(true); renderCartao(); showToast('✅ Fatura fechada. Lançamentos individuais mantidos em Contas a Pagar.','var(--emerald)',4500); closeAllModals();
+    },'Fechar Fatura');
+  };
+
+  console.log('Nexus One v10.0: Cartão unificado com Tipos de Despesa aplicado.');
+
+  // ================================================================
+  // Nexus One v10.1 — Correção Completa do Pipeline de Persistência
+  // Corrige todos os caminhos de save/load/backup/restore/drive
+  // ================================================================
+  (function nexusPersistenciaV10(){
+
+    // ── Função central de normalização/migração — aplicada em TODOS os caminhos ──
+    function normalizarDados(d) {
+      if(!d || typeof d !== 'object') d = {};
+
+      // Garantir todos os arrays
+      var ARRAYS = ['contas','movimentacoes','pagar','receber','gastosCartao','objetivos',
+        'tipos','subTipos','categoriasCartao','metasGasto','historicoFatura',
+        'auditoria','terceiros','movTerceiros','previsoes','transferencias'];
+      ARRAYS.forEach(function(k){ if(!Array.isArray(d[k])) d[k]=[]; });
+
+      // cartaoCicloAtual — campo crítico que ficava fora do NEXUS_KEYS
+      if(!d.cartaoCicloAtual || typeof d.cartaoCicloAtual !== 'object')
+        d.cartaoCicloAtual = {mes: mes(), ano: ano()};
+      else {
+        d.cartaoCicloAtual.mes = parseInt(d.cartaoCicloAtual.mes,10) || mes();
+        d.cartaoCicloAtual.ano = parseInt(d.cartaoCicloAtual.ano,10) || ano();
+      }
+
+      // config — todos os campos obrigatórios
+      if(!d.config || typeof d.config !== 'object') d.config = {};
+      var cfgDefaults = {nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false,googleClientId:'',driveConnected:false};
+      Object.keys(cfgDefaults).forEach(function(k){ if(d.config[k]===undefined) d.config[k]=cfgDefaults[k]; });
+
+      // Migração v10: gastosCartao sem tipoNome → mapear via categoriasCartao
+      d.gastosCartao.forEach(function(g){
+        if(!g.tipoNome && g.categoriaId) {
+          var cat = (d.categoriasCartao||[]).find(function(c){return c.id===g.categoriaId;});
+          g.tipoNome = cat ? cat.nome : 'Outros';
+        }
+        if(!g.tipoNome) g.tipoNome = 'Outros';
+        if(!g.status)   g.status   = 'pendente';
+      });
+
+      // Migração v9: receber — valorOriginal e historicoRecebimentos
+      d.receber.forEach(function(r){
+        if(r.valorOriginal===undefined||r.valorOriginal===null) r.valorOriginal=r.valor||0;
+        if(!Array.isArray(r.historicoRecebimentos)) r.historicoRecebimentos=[];
+      });
+
+      // Migração v9: objetivos — aportes
+      d.objetivos.forEach(function(o){ if(!Array.isArray(o.aportes)) o.aportes=[]; });
+
+      // Migração legado: transferências antigas em movimentacoes → tabela dedicada
+      var byTrf={};
+      d.movimentacoes.forEach(function(m){
+        if(m.transferenciaId && (m.tipo==='Transferência'||m.tipo==='TransferÃªncia')){
+          byTrf[m.transferenciaId]=byTrf[m.transferenciaId]||[];
+          byTrf[m.transferenciaId].push(m);
+        }
+      });
+      Object.keys(byTrf).forEach(function(bid){
+        if(d.transferencias.some(function(t){return t.id===bid||t._lid===bid;})) return;
+        var desp=null,rec=null;
+        byTrf[bid].forEach(function(m){if(m.tipoOp==='DESPESA') desp=m; else rec=m;});
+        if(desp&&rec){
+          d.transferencias.push({id:bid,_lid:bid,contaOrigemId:desp.contaId,contaDestinoId:rec.contaId,
+            valor:desp.valor,data:desp.data,descricao:(desp.descricao||'').replace(/⇄ Transf\.: /,'').replace(/â‡„ Transf\.: /,''),
+            status:'ATIVO',criadoEm:desp.criadoEm||new Date().toISOString()});
+          d.movimentacoes=d.movimentacoes.filter(function(m){return m.transferenciaId!==bid;});
+        }
+      });
+
+      // Remover rascunhos automáticos de cartão (origem legado sincronizarCartaoPagar)
+      // que agora são substituídos por lançamentos individuais
+      d.pagar = d.pagar.filter(function(p){ return !p._rascunho; });
+
+      return d;
+    }
+
+    // ── exportBackup FINAL — normaliza antes de exportar, inclui cartaoCicloAtual ──
+    window.exportBackup = function(){
+      DATA = normalizarDados(DATA);
+      save(true);
+      var hoje2 = new Date().toISOString().split('T')[0];
+      var nomeUsr = (DATA.config.nome||'nexus').replace(/\s+/g,'-').toLowerCase().replace(/[^a-z0-9-]/g,'');
+      var nome = 'nexus_backup_'+nomeUsr+'_'+hoje2+'.json';
+      var total = ['contas','movimentacoes','pagar','receber','gastosCartao','objetivos',
+        'previsoes','transferencias','terceiros','movTerceiros','auditoria'].reduce(function(s,k){
+          return s+(Array.isArray(DATA[k])?DATA[k].length:0);
+        },0);
+      dlBlob(JSON.stringify(DATA,null,2), nome, 'application/json');
+      showToast('✅ Backup salvo: '+nome+' ('+total+' registros em todos os módulos)','var(--emerald)',4000);
+    };
+
+    // ── importBackup FINAL — sem chamar loadData(), aplica normalizarDados() ──
+    window.importBackup = function(){
+      var inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json,application/json';
+      inp.onchange = function(){
+        var f = this.files[0]; if(!f) return;
+        var reader = new FileReader();
+        reader.onload = function(e){
+          try{
+            var parsed = JSON.parse(e.target.result);
+            // Validação mínima
+            var validos = ['contas','movimentacoes','pagar','receber'].filter(function(k){return Array.isArray(parsed[k]);});
+            if(validos.length < 2) return showToast('❌ Arquivo não reconhecido como backup válido','var(--coral)');
+            var norm = normalizarDados(JSON.parse(JSON.stringify(parsed)));
+            var resumo =
+              'Contas: '+norm.contas.length+'\n'+
+              'Movimentações: '+norm.movimentacoes.length+'\n'+
+              'A Pagar: '+norm.pagar.length+'\n'+
+              'A Receber: '+norm.receber.length+'\n'+
+              'Cartão (gastos): '+norm.gastosCartao.length+'\n'+
+              'Histórico Faturas: '+norm.historicoFatura.length+'\n'+
+              'Objetivos: '+norm.objetivos.length+'\n'+
+              'Previsões: '+norm.previsoes.length+'\n'+
+              'Transferências: '+norm.transferencias.length+'\n'+
+              'Terceiros: '+norm.terceiros.length+' contas / '+norm.movTerceiros.length+' movimentos\n'+
+              'Auditoria: '+norm.auditoria.length+'\n'+
+              'Tipos/SubTipos: '+norm.tipos.length+' / '+norm.subTipos.length+'\n'+
+              'Configurações e ciclo do cartão: incluídos';
+            if(!confirm('Substituir TODOS os dados pelo arquivo importado?\n\n'+resumo)) return;
+            DATA = norm; // ← sem chamar loadData() que sobrescreveria com localStorage
+            save(true);
+            navigateTo('dashboard');
+            var total = norm.contas.length+norm.movimentacoes.length+norm.pagar.length+norm.receber.length;
+            showToast('✅ Backup importado! ('+total+' registros principais carregados)','var(--emerald)',4000);
+          }catch(err){
+            console.error('Nexus importBackup erro:',err);
+            showToast('❌ Arquivo inválido ou corrompido','var(--coral)');
+          }
+        };
+        reader.readAsText(f);
+      };
+      inp.click();
+    };
+
+    // ── saveToGDrive FINAL — normaliza antes de enviar ao Drive ──
+    window.saveToGDrive = async function(){
+      if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
+      DATA = normalizarDados(DATA);
+      save(true);
+      showToast('☁️ Salvando no Google Drive...','var(--orange)',2000);
+      try{
+        var json = JSON.stringify(DATA, null, 2);
+        var searchR = await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",
+          {headers:{'Authorization':'Bearer '+_driveAccessToken}});
+        var searchData = await searchR.json();
+        var existingId = searchData.files&&searchData.files.length>0 ? searchData.files[0].id : null;
+        var r;
+        if(existingId){
+          r = await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existingId+'?uploadType=media',{
+            method:'PATCH',headers:{'Authorization':'Bearer '+_driveAccessToken,'Content-Type':'application/json'},body:json
+          });
+        } else {
+          var formData = new FormData();
+          formData.append('metadata', new Blob([JSON.stringify({name:'nexus-one-backup.json',mimeType:'application/json'})],{type:'application/json'}));
+          formData.append('file', new Blob([json],{type:'application/json'}));
+          r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+            method:'POST',headers:{'Authorization':'Bearer '+_driveAccessToken},body:formData
+          });
+        }
+        if(r.ok) showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500);
+        else showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)');
+      }catch(e){ showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)'); }
+    };
+
+    // ── restoreFromGDrive FINAL — usa normalizarDados(), sem chamar loadData() ──
+    window.restoreFromGDrive = async function(){
+      if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
+      showToast('☁️ Buscando backup no Google Drive...','var(--orange)',2000);
+      try{
+        var searchR = await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",
+          {headers:{'Authorization':'Bearer '+_driveAccessToken}});
+        var searchData = await searchR.json();
+        if(!searchData.files||!searchData.files.length) return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
+        var fileR = await fetch('https://www.googleapis.com/drive/v3/files/'+searchData.files[0].id+'?alt=media',
+          {headers:{'Authorization':'Bearer '+_driveAccessToken}});
+        var text = await fileR.text();
+        var parsed;
+        try{ parsed = JSON.parse(text); }catch(e){ return showToast('❌ Arquivo de backup inválido.','var(--coral)'); }
+        var validos = ['contas','movimentacoes','pagar','receber'].filter(function(k){return Array.isArray(parsed[k]);});
+        if(validos.length<2) return showToast('❌ Arquivo de backup inválido ou corrompido.','var(--coral)');
+        var norm = normalizarDados(JSON.parse(JSON.stringify(parsed)));
+        var total = norm.contas.length+norm.movimentacoes.length+norm.pagar.length+norm.receber.length;
+        if(!confirm('Restaurar backup do Drive? Os dados atuais serão substituídos.\n\n'+
+          'Contas: '+norm.contas.length+'\nMovimentações: '+norm.movimentacoes.length+'\nA Pagar: '+norm.pagar.length+'\nA Receber: '+norm.receber.length+'\nCartão: '+norm.gastosCartao.length+' gastos\nPrevisões: '+norm.previsoes.length+'\nTransferências: '+norm.transferencias.length+'\nObjetivos: '+norm.objetivos.length+'\nTerceiros: '+norm.terceiros.length)) return;
+        DATA = norm; // ← sem chamar loadData()
+        save(true);
+        navigateTo('dashboard');
+        showToast('✅ Dados restaurados do Google Drive! ('+total+' registros principais)','var(--emerald)',4000);
+      }catch(e){
+        console.error('Nexus restoreFromGDrive erro:',e);
+        showToast('❌ Erro ao restaurar do Drive. Tente novamente.','var(--coral)');
+      }
+    };
+
+    // ── Aplicar normalização ao DATA atual (já carregado do localStorage) ──
+    DATA = normalizarDados(DATA);
+    console.log('Nexus One v10.1: Pipeline de persistência corrigido — save/load/backup/drive unificados.');
+  })();
 })();
 </script>
 </body>
