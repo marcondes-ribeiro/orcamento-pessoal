@@ -4201,8 +4201,19 @@ th { border-bottom: 1px solid rgba(255,140,0,0.12) !important; }
 // ================================================================
 
 /* === NOVO: Google Drive === */
-const GOOGLE_CLIENT_ID = 'SEU_CLIENT_ID_AQUI';
+const GOOGLE_CLIENT_ID = '442080482391-bf416och40t7k40vskm59q746j1tnkdl.apps.googleusercontent.com';
 let _driveAccessToken = null; // token em memória apenas — não persiste
+
+// ================================================================
+// AUTO-SYNC CONFIG
+// ================================================================
+let _driveFileId = null;          // cache do ID do arquivo no Drive
+let _autoSyncTimer = null;        // timer de sincronização automática
+let _lastSyncHash = null;         // hash dos dados na última sync bem-sucedida
+let _syncInProgress = false;      // mutex para evitar sincronizações simultâneas
+let _autoSyncEnabled = false;     // ligado apenas quando conectado ao Drive
+const AUTO_SYNC_INTERVAL = 3000;  // 3 segundos
+const DRIVE_FILE_NAME = 'nexus-one-backup.json';
 
 function openDriveModal(){
   // Respeita nexus_drive_skip no localStorage
@@ -4237,8 +4248,8 @@ function updateDriveStatus(){
 
 function driveStatusClick(){
   if(_driveAccessToken){
-    // Mostra opções de salvar/restaurar via toast
-    showToast('☁️ Drive conectado — use os botões em Configurações','var(--emerald)',3500);
+    const syncStatus = _autoSyncEnabled ? 'Auto-sync ativo (a cada 3s)' : 'Auto-sync inativo';
+    showToast(`☁️ Drive conectado — ${syncStatus}. Use os botões em Configurações`,'var(--emerald)',4000);
   } else {
     openDriveModal();
   }
@@ -4327,6 +4338,8 @@ function init(){
   if(localStorage.getItem('nexus_drive_skip')!=='1') setTimeout(()=>{ openDriveModal(); }, 1200);
   /* === NOVO: Google Drive — check nexus_drive_skip === */
   updateDriveStatus();
+  /* === AUTO-SYNC: se token já estiver em memória (OAuth return já processado), inicia sync === */
+  if(_driveAccessToken) startAutoSync();
 }
 
 function loadData(){
@@ -4498,17 +4511,23 @@ function card(label, bgClass, badge, val, valClass, sub, extra=''){
 }
 
 // ================================================================
-// DRIVE INTEGRATION
+// DRIVE INTEGRATION — Auto-Sync completo
 // ================================================================
-/* === NOVO: Google Drive === */
+
+/**
+ * Inicia fluxo OAuth 2.0 Implicit Grant para o Google Drive.
+ * Redireciona para accounts.google.com; ao retornar, checkOAuthReturn() processa o token.
+ */
 function connectGDrive(){
-  if(GOOGLE_CLIENT_ID==='SEU_CLIENT_ID_AQUI'){
-    showToast('⚠️ Configure o GOOGLE_CLIENT_ID no código-fonte antes de conectar','var(--amber)',5000);
-    return;
-  }
   const scope = 'https://www.googleapis.com/auth/drive.file';
   const redirectUri = window.location.origin + window.location.pathname;
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth`
+    +`?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}`
+    +`&redirect_uri=${encodeURIComponent(redirectUri)}`
+    +`&response_type=token`
+    +`&scope=${encodeURIComponent(scope)}`
+    +`&prompt=consent`;
+  console.log('[NexusDrive] Iniciando autenticação OAuth 2.0...');
   window.open(url,'_self');
 }
 
@@ -4519,111 +4538,280 @@ function dismissDriveBanner(){
   save(true);
 }
 
-// Check for OAuth token in URL hash (after redirect)
+/**
+ * Gera um hash simples (checksum) dos dados atuais para detectar mudanças.
+ * Evita uploads desnecessários ao Drive quando os dados não mudaram.
+ */
+function _dataHash(){
+  try{ return JSON.stringify(DATA).length + '_' + (DATA.movimentacoes||[]).length + '_' + (DATA.pagar||[]).length + '_' + (DATA.contas||[]).length + '_' + (DATA.gastosCartao||[]).length; }
+  catch(e){ return Date.now().toString(); }
+}
+
+/**
+ * Busca (ou usa cache de) o ID do arquivo nexus-one-backup.json no Drive.
+ * Retorna null se não encontrado.
+ */
+async function _getDriveFileId(){
+  if(_driveFileId) return _driveFileId; // usa cache
+  try{
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name%3D'${DRIVE_FILE_NAME}'%20and%20trashed%3Dfalse&fields=files(id,name)`,
+      { headers:{ 'Authorization':'Bearer '+_driveAccessToken } }
+    );
+    if(r.status === 401){ _handleTokenExpired(); return null; }
+    const data = await r.json();
+    if(data.files && data.files.length > 0){
+      _driveFileId = data.files[0].id;
+      console.log('[NexusDrive] Arquivo encontrado no Drive, ID:', _driveFileId);
+    }
+  } catch(e){ console.warn('[NexusDrive] Erro ao buscar arquivo no Drive:', e); }
+  return _driveFileId || null;
+}
+
+/**
+ * Trata token expirado: limpa estado de conexão e notifica o usuário.
+ */
+function _handleTokenExpired(){
+  console.warn('[NexusDrive] Token expirado ou inválido. Desconectando...');
+  _driveAccessToken = null;
+  _driveFileId = null;
+  _autoSyncEnabled = false;
+  stopAutoSync();
+  updateDriveStatus();
+  showToast('⚠️ Sessão do Drive expirada. Reconecte para continuar sincronizando.','var(--amber)',6000);
+}
+
+/**
+ * Faz upload do JSON para o Drive.
+ * - Se o arquivo já existe (ID em cache ou encontrado): PATCH (atualiza).
+ * - Se não existe: POST multipart (cria novo).
+ * Nunca cria arquivos duplicados.
+ */
+async function _uploadToDrive(json, silent=false){
+  if(!_driveAccessToken) return false;
+  try{
+    const fileId = await _getDriveFileId();
+    let r;
+    if(fileId){
+      // Atualiza arquivo existente
+      r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,{
+        method:'PATCH',
+        headers:{ 'Authorization':'Bearer '+_driveAccessToken, 'Content-Type':'application/json' },
+        body: json
+      });
+      if(r.status === 401){ _handleTokenExpired(); return false; }
+      console.log('[NexusDrive] Arquivo atualizado no Drive (ID:', fileId, ')');
+    } else {
+      // Cria novo arquivo
+      const meta = JSON.stringify({ name: DRIVE_FILE_NAME, mimeType:'application/json' });
+      const fd = new FormData();
+      fd.append('metadata', new Blob([meta],{type:'application/json'}));
+      fd.append('file', new Blob([json],{type:'application/json'}));
+      r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+        method:'POST',
+        headers:{ 'Authorization':'Bearer '+_driveAccessToken },
+        body: fd
+      });
+      if(r.status === 401){ _handleTokenExpired(); return false; }
+      if(r.ok){
+        const created = await r.json();
+        _driveFileId = created.id; // armazena ID do arquivo recém-criado
+        console.log('[NexusDrive] Arquivo criado no Drive (ID:', _driveFileId, ')');
+      }
+    }
+    return r.ok;
+  } catch(e){ console.error('[NexusDrive] Erro no upload:', e); return false; }
+}
+
+/**
+ * Loop de sincronização automática.
+ * Executa a cada AUTO_SYNC_INTERVAL ms.
+ * Só faz upload se os dados mudaram desde a última sync (via hash).
+ * Usa mutex _syncInProgress para evitar chamadas simultâneas.
+ */
+async function _autoSyncLoop(){
+  if(!_autoSyncEnabled || !_driveAccessToken || _syncInProgress) return;
+  const currentHash = _dataHash();
+  if(currentHash === _lastSyncHash) return; // sem mudanças, pula
+  _syncInProgress = true;
+  try{
+    const json = JSON.stringify(DATA, null, 2);
+    const ok = await _uploadToDrive(json, true);
+    if(ok){
+      _lastSyncHash = currentHash;
+      console.log('[NexusDrive] Auto-sync concluído:', new Date().toLocaleTimeString('pt-BR'));
+      // Atualiza indicador visual sutil no header
+      _updateSyncIndicator(true);
+    } else if(_driveAccessToken){
+      console.warn('[NexusDrive] Falha no auto-sync. Tentará novamente no próximo ciclo.');
+    }
+  } catch(e){ console.error('[NexusDrive] Erro no auto-sync:', e); }
+  finally{ _syncInProgress = false; }
+}
+
+/** Inicia o timer de sincronização automática. */
+function startAutoSync(){
+  if(_autoSyncTimer) clearInterval(_autoSyncTimer);
+  _autoSyncEnabled = true;
+  _autoSyncTimer = setInterval(_autoSyncLoop, AUTO_SYNC_INTERVAL);
+  console.log('[NexusDrive] Auto-sync iniciado (intervalo:', AUTO_SYNC_INTERVAL, 'ms)');
+}
+
+/** Para o timer de sincronização automática. */
+function stopAutoSync(){
+  if(_autoSyncTimer){ clearInterval(_autoSyncTimer); _autoSyncTimer = null; }
+  _autoSyncEnabled = false;
+  console.log('[NexusDrive] Auto-sync parado.');
+}
+
+/** Atualiza o indicador visual de sincronização no header (piscada rápida). */
+function _updateSyncIndicator(ok){
+  const dot = document.querySelector('.saved-dot');
+  if(!dot) return;
+  if(ok){ dot.style.background='var(--emerald)'; setTimeout(()=>{ dot.style.background=''; },1200); }
+}
+
+/**
+ * Verifica token OAuth no hash da URL após redirecionamento do Google.
+ * Chamado automaticamente no carregamento da página.
+ */
 (function checkOAuthReturn(){
   const hash = window.location.hash;
-  if(hash.includes('access_token')){
-    const params = new URLSearchParams(hash.slice(1));
-    const token = params.get('access_token');
-    if(token){
-      /* === NOVO: Google Drive — token em memória === */
-      _driveAccessToken = token;
-      DATA.config.driveConnected=true;
-      save(true);
-      showToast('✅ Google Drive conectado com sucesso!','var(--emerald)',4000);
-      history.replaceState(null,null,' ');
-      updateDriveStatus();
-    }
-  }
+  if(!hash.includes('access_token')) return;
+  const params = new URLSearchParams(hash.slice(1));
+  const token = params.get('access_token');
+  if(!token) return;
+  _driveAccessToken = token;
+  DATA.config.driveConnected = true;
+  save(true);
+  history.replaceState(null, null, ' ');
+  updateDriveStatus();
+  console.log('[NexusDrive] Token OAuth recebido com sucesso.');
+  showToast('✅ Google Drive conectado! Sincronizando dados...','var(--emerald)',4000);
+  // Após login, tenta restaurar dados do Drive automaticamente
+  setTimeout(async ()=>{
+    await _autoRestoreOnLogin();
+    startAutoSync();
+  }, 800);
 })();
 
-/* === NOVO: Google Drive — Salvar no Drive === */
+/**
+ * Ao conectar pela primeira vez, verifica se há dados no Drive.
+ * Se houver: oferece restauração. Em seguida inicia auto-sync.
+ */
+async function _autoRestoreOnLogin(){
+  if(!_driveAccessToken) return;
+  console.log('[NexusDrive] Verificando dados existentes no Drive...');
+  try{
+    const fileId = await _getDriveFileId();
+    if(!fileId){ console.log('[NexusDrive] Nenhum arquivo encontrado no Drive. Será criado na próxima sync.'); return; }
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{
+      headers:{ 'Authorization':'Bearer '+_driveAccessToken }
+    });
+    if(!r.ok){ console.warn('[NexusDrive] Falha ao baixar arquivo do Drive.'); return; }
+    const text = await r.text();
+    let parsed;
+    try{ parsed = JSON.parse(text); } catch(e){ console.warn('[NexusDrive] Arquivo no Drive inválido.'); return; }
+    const validos = ['contas','movimentacoes','pagar','receber'].filter(k=>Array.isArray(parsed[k]));
+    if(validos.length < 2){ console.warn('[NexusDrive] Arquivo no Drive não parece ser um backup válido.'); return; }
+    // Compara datas: só pergunta se o backup do Drive for mais recente
+    const localMov = (DATA.movimentacoes||[]).length;
+    const driveMov = (parsed.movimentacoes||[]).length;
+    const localContas = (DATA.contas||[]).length;
+    const driveContas = (parsed.contas||[]).length;
+    const temDadosNoDrive = driveContas > 0 || driveMov > 0;
+    const dadosDiferentes = localMov !== driveMov || localContas !== driveContas;
+    if(temDadosNoDrive && dadosDiferentes){
+      const msg = `Encontramos um backup no Google Drive com:\n`
+        +`• ${driveContas} conta(s)  |  Local: ${localContas}\n`
+        +`• ${driveMov} movimentação(ões)  |  Local: ${localMov}\n\n`
+        +`Deseja restaurar os dados do Drive?\n(Os dados locais atuais serão substituídos)`;
+      if(confirm(msg)){
+        await _applyDriveData(parsed);
+        showToast('✅ Dados restaurados do Google Drive!','var(--emerald)',4000);
+      } else {
+        console.log('[NexusDrive] Usuário optou por manter dados locais.');
+        _lastSyncHash = null; // força sync dos dados locais para o Drive
+      }
+    } else if(temDadosNoDrive){
+      // Dados iguais ou Drive vazio — só sincroniza silenciosamente
+      console.log('[NexusDrive] Dados em sincronia com o Drive.');
+      _lastSyncHash = _dataHash();
+    }
+  } catch(e){ console.error('[NexusDrive] Erro ao verificar dados no Drive:', e); }
+}
+
+/**
+ * Aplica dados vindos do Drive ao estado local (DATA).
+ * Usa normalizarDados() se disponível, senão aplica guardas manuais.
+ */
+async function _applyDriveData(parsed){
+  let norm;
+  if(typeof normalizarDados === 'function'){
+    norm = normalizarDados(JSON.parse(JSON.stringify(parsed)));
+  } else {
+    norm = parsed;
+    const arrays = ['contas','movimentacoes','pagar','receber','gastosCartao','objetivos',
+      'tipos','subTipos','categoriasCartao','metasGasto','historicoFatura','auditoria',
+      'terceiros','movTerceiros','previsoes','transferencias'];
+    arrays.forEach(k=>{ if(!Array.isArray(norm[k])) norm[k]=[]; });
+    if(!norm.config || typeof norm.config !== 'object') norm.config={};
+    ['nome','rendaMensal','diaFechamento','driveDismissed','googleClientId','driveConnected']
+      .forEach(k=>{ if(norm.config[k]===undefined) norm.config[k]=k==='rendaMensal'||k==='diaFechamento'?0:''; });
+  }
+  DATA = norm;
+  save(true);
+  navigateTo('dashboard');
+  _lastSyncHash = _dataHash(); // marca como sincronizado
+}
+
+/* === Salvar manualmente no Drive === */
 async function saveToGDrive(){
   if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
+  if(typeof normalizarDados==='function') DATA = normalizarDados(DATA);
+  save(true);
   showToast('☁️ Salvando no Google Drive...','var(--orange)',2000);
   try{
     const json = JSON.stringify(DATA, null, 2);
-    // Verifica se arquivo já existe
-    const searchR = await fetch(`https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)`,{
-      headers:{'Authorization':'Bearer '+_driveAccessToken}
-    });
-    const searchData = await searchR.json();
-    const existingId = searchData.files && searchData.files.length>0 ? searchData.files[0].id : null;
-
-    let r;
-    if(existingId){
-      // Atualiza arquivo existente
-      r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`,{
-        method:'PATCH',
-        headers:{'Authorization':'Bearer '+_driveAccessToken,'Content-Type':'application/json'},
-        body: json
-      });
+    const ok = await _uploadToDrive(json, false);
+    if(ok){
+      _lastSyncHash = _dataHash();
+      showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500);
     } else {
-      // Cria novo arquivo
-      const formData = new FormData();
-      formData.append('metadata', new Blob([JSON.stringify({name:'nexus-one-backup.json',mimeType:'application/json'})],{type:'application/json'}));
-      formData.append('file', new Blob([json],{type:'application/json'}));
-      r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+_driveAccessToken},
-        body: formData
-      });
+      showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)');
     }
-    if(r.ok) showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500);
-    else showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)');
-  } catch(e){ showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)'); }
+  } catch(e){ console.error('[NexusDrive] saveToGDrive erro:', e); showToast('❌ Erro ao salvar no Drive.','var(--coral)'); }
 }
 
-/* === NOVO: Google Drive — Restaurar do Drive === */
+/* === Restaurar manualmente do Drive === */
 async function restoreFromGDrive(){
   if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
   showToast('☁️ Buscando backup no Google Drive...','var(--orange)',2000);
   try{
-    const searchR = await fetch(`https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)`,{
-      headers:{'Authorization':'Bearer '+_driveAccessToken}
+    const fileId = await _getDriveFileId();
+    if(!fileId) return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{
+      headers:{ 'Authorization':'Bearer '+_driveAccessToken }
     });
-    const searchData = await searchR.json();
-    if(!searchData.files || searchData.files.length===0){
-      return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
-    }
-    const fileId = searchData.files[0].id;
-    const fileR = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{
-      headers:{'Authorization':'Bearer '+_driveAccessToken}
-    });
-    const text = await fileR.text();
+    if(!r.ok) return showToast('❌ Erro ao baixar arquivo do Drive.','var(--coral)');
+    const text = await r.text();
     let parsed;
     try{ parsed = JSON.parse(text); } catch(e){ return showToast('❌ Arquivo de backup inválido.','var(--coral)'); }
-    if(!confirm('Restaurar backup do Drive? Os dados atuais serão substituídos.')) return;
-    DATA = parsed;
-    // ── Guardas de migração: garante arrays válidos para todas as chaves
-    // (necessário ao restaurar backups gerados por versões anteriores do app)
-    if(!Array.isArray(DATA.contas))           DATA.contas=[];
-    if(!Array.isArray(DATA.movimentacoes))    DATA.movimentacoes=[];
-    if(!Array.isArray(DATA.pagar))            DATA.pagar=[];
-    if(!Array.isArray(DATA.receber))          DATA.receber=[];
-    if(!Array.isArray(DATA.gastosCartao))     DATA.gastosCartao=[];
-    if(!Array.isArray(DATA.objetivos))        DATA.objetivos=[];
-    if(!Array.isArray(DATA.tipos))            DATA.tipos=[];
-    if(!Array.isArray(DATA.subTipos))         DATA.subTipos=[];
-    if(!Array.isArray(DATA.categoriasCartao)) DATA.categoriasCartao=[];
-    if(!Array.isArray(DATA.metasGasto))       DATA.metasGasto=[];
-    if(!Array.isArray(DATA.historicoFatura))  DATA.historicoFatura=[];
-    if(!Array.isArray(DATA.auditoria))        DATA.auditoria=[];
-    if(!Array.isArray(DATA.terceiros))        DATA.terceiros=[];
-    if(!Array.isArray(DATA.movTerceiros))     DATA.movTerceiros=[];
-    if(!Array.isArray(DATA.previsoes))        DATA.previsoes=[];
-    if(!Array.isArray(DATA.transferencias))   DATA.transferencias=[];
-    if(!DATA.config || typeof DATA.config !== 'object') DATA.config={};
-    if(DATA.config.nome          === undefined) DATA.config.nome='';
-    if(DATA.config.rendaMensal   === undefined) DATA.config.rendaMensal=0;
-    if(DATA.config.diaFechamento === undefined) DATA.config.diaFechamento=15;
-    if(DATA.config.driveDismissed=== undefined) DATA.config.driveDismissed=false;
-    if(DATA.config.googleClientId=== undefined) DATA.config.googleClientId='';
-    save(true);
-    if(typeof loadData==='function') loadData();
-    navigateTo('dashboard');
-    showToast('✅ Dados restaurados do Google Drive!','var(--emerald)',4000);
-  } catch(e){ showToast('❌ Erro ao restaurar do Drive. Tente novamente.','var(--coral)'); }
+    const validos = ['contas','movimentacoes','pagar','receber'].filter(k=>Array.isArray(parsed[k]));
+    if(validos.length < 2) return showToast('❌ Arquivo de backup inválido ou corrompido.','var(--coral)');
+    const norm = typeof normalizarDados==='function' ? normalizarDados(JSON.parse(JSON.stringify(parsed))) : parsed;
+    const total = (norm.contas||[]).length+(norm.movimentacoes||[]).length+(norm.pagar||[]).length+(norm.receber||[]).length;
+    if(!confirm(
+      `Restaurar backup do Drive? Os dados atuais serão substituídos.\n\n`
+      +`Contas: ${(norm.contas||[]).length}\nMovimentações: ${(norm.movimentacoes||[]).length}\n`
+      +`A Pagar: ${(norm.pagar||[]).length}\nA Receber: ${(norm.receber||[]).length}\n`
+      +`Cartão: ${(norm.gastosCartao||[]).length} gastos\nPrevisões: ${(norm.previsoes||[]).length}\n`
+      +`Transferências: ${(norm.transferencias||[]).length}\nObjetivos: ${(norm.objetivos||[]).length}\n`
+      +`Terceiros: ${(norm.terceiros||[]).length}`
+    )) return;
+    await _applyDriveData(parsed);
+    showToast(`✅ Dados restaurados do Google Drive! (${total} registros principais)`,'var(--emerald)',4000);
+  } catch(e){ console.error('[NexusDrive] restoreFromGDrive erro:', e); showToast('❌ Erro ao restaurar do Drive. Tente novamente.','var(--coral)'); }
 }
 
 // ================================================================
@@ -10994,26 +11182,10 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
       showToast('☁️ Salvando no Google Drive...','var(--orange)',2000);
       try{
         var json = JSON.stringify(DATA, null, 2);
-        var searchR = await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",
-          {headers:{'Authorization':'Bearer '+_driveAccessToken}});
-        var searchData = await searchR.json();
-        var existingId = searchData.files&&searchData.files.length>0 ? searchData.files[0].id : null;
-        var r;
-        if(existingId){
-          r = await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existingId+'?uploadType=media',{
-            method:'PATCH',headers:{'Authorization':'Bearer '+_driveAccessToken,'Content-Type':'application/json'},body:json
-          });
-        } else {
-          var formData = new FormData();
-          formData.append('metadata', new Blob([JSON.stringify({name:'nexus-one-backup.json',mimeType:'application/json'})],{type:'application/json'}));
-          formData.append('file', new Blob([json],{type:'application/json'}));
-          r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
-            method:'POST',headers:{'Authorization':'Bearer '+_driveAccessToken},body:formData
-          });
-        }
-        if(r.ok) showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500);
+        var ok = await _uploadToDrive(json, false);
+        if(ok){ _lastSyncHash = _dataHash(); showToast('✅ Dados salvos no Google Drive!','var(--emerald)',3500); }
         else showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)');
-      }catch(e){ showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)'); }
+      }catch(e){ console.error('Nexus saveToGDrive erro:',e); showToast('❌ Erro ao salvar no Drive. Tente novamente.','var(--coral)'); }
     };
 
     // ── restoreFromGDrive FINAL — usa normalizarDados(), sem chamar loadData() ──
@@ -11021,11 +11193,9 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
       if(!_driveAccessToken) return showToast('⚠️ Drive não conectado. Conecte primeiro.','var(--amber)');
       showToast('☁️ Buscando backup no Google Drive...','var(--orange)',2000);
       try{
-        var searchR = await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",
-          {headers:{'Authorization':'Bearer '+_driveAccessToken}});
-        var searchData = await searchR.json();
-        if(!searchData.files||!searchData.files.length) return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
-        var fileR = await fetch('https://www.googleapis.com/drive/v3/files/'+searchData.files[0].id+'?alt=media',
+        var fileId = await _getDriveFileId();
+        if(!fileId) return showToast('⚠️ Nenhum backup encontrado no Drive.','var(--amber)');
+        var fileR = await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',
           {headers:{'Authorization':'Bearer '+_driveAccessToken}});
         var text = await fileR.text();
         var parsed;
@@ -11039,6 +11209,7 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
         DATA = norm; // ← sem chamar loadData()
         save(true);
         navigateTo('dashboard');
+        _lastSyncHash = _dataHash();
         showToast('✅ Dados restaurados do Google Drive! ('+total+' registros principais)','var(--emerald)',4000);
       }catch(e){
         console.error('Nexus restoreFromGDrive erro:',e);
