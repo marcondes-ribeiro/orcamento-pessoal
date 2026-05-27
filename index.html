@@ -4201,7 +4201,7 @@ th { border-bottom: 1px solid rgba(255,140,0,0.12) !important; }
 // ================================================================
 
 /* === NOVO: Google Drive === */
-const GOOGLE_CLIENT_ID = '442080482391-bf416cch40t7k40vskm59q746j1trkdl.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '442080482391-bf416och40t7k40vskm59q746j1tnkdl.apps.googleusercontent.com';
 let _driveAccessToken = null; // token em memória apenas — não persiste
 
 // ================================================================
@@ -10590,20 +10590,20 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
   };
 
   window.restoreFromGDrive=async function(){
-    if(!_driveAccessToken) return showToast('Drive nao conectado. Conecte primeiro.','var(--amber)');
+    if(!_driveAccessToken) return showToast('Drive não conectado. Conecte primeiro.','var(--amber)');
     showToast('Buscando backup no Google Drive...','var(--orange)',2000);
     try{
-      var searchR=await fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'nexus-one-backup.json'%20and%20trashed%3Dfalse&fields=files(id,name)",{headers:{'Authorization':'Bearer '+_driveAccessToken}});
-      var searchData=await searchR.json();
-      if(!searchData.files || !searchData.files.length) return showToast('Nenhum backup encontrado no Drive.','var(--amber)');
-      var fileR=await fetch('https://www.googleapis.com/drive/v3/files/'+searchData.files[0].id+'?alt=media',{headers:{'Authorization':'Bearer '+_driveAccessToken}});
+      var fileId = await _getDriveFileId();
+      if(!fileId) return showToast('Nenhum backup encontrado no Drive.','var(--amber)');
+      var fileR=await fetch('https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',{headers:{'Authorization':'Bearer '+_driveAccessToken}});
       var parsed=JSON.parse(await fileR.text());
       if(!isValidBackup(parsed)) return showToast('Arquivo de backup invalido.','var(--coral)');
       var normalized=normalizeBackupData(parsed);
-      if(!confirm('Restaurar backup do Drive? Os dados atuais serao substituidos.\n\n'+backupSummary(normalized))) return;
+      if(!confirm('Restaurar backup do Drive? Os dados atuais serão substituídos.\n\n'+backupSummary(normalized))) return;
       DATA=normalized;
       save(true);
       navigateTo('dashboard');
+      _lastSyncHash = _dataHash();
       showToast('Dados restaurados do Google Drive! ('+countBackupRecords(DATA)+' registros)','var(--emerald)',4000);
     }catch(e){
       console.error('Erro ao restaurar do Drive:',e);
