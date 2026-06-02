@@ -11223,5 +11223,1108 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
   })();
 })();
 </script>
+<script>
+// ================================================================
+// Nexus One v12.0 — Patch Cirúrgico Consolidado
+// Alterações:
+//  [1] A Pagar / A Receber: exibição padrão somente pendentes + botão "Mostrar Baixadas"
+//  [2] Módulo Contas: busca avançada por múltiplos campos + paginação no extrato
+//  [3] Cartão: vencimento pós-fechamento vai para o 2º mês subsequente (dia 05)
+//  [4] Cartão: controle de duplicidade ao registrar gastos em A Pagar
+//  [5] Previsões: campo Cartão calculado automaticamente via próxima fatura do cartão
+// ================================================================
+(function nexusPatchV12(){
+
+  // ── Utilitários internos ──
+  function _hoje(){ return new Date().toISOString().split('T')[0]; }
+  function _mes(){ return new Date().getMonth()+1; }
+  function _ano(){ return new Date().getFullYear(); }
+  function _pad(n){ return n<10?'0'+n:String(n); }
+
+  // ================================================================
+  // [1] A PAGAR — exibição padrão apenas pendentes + botão mostrar baixadas
+  // ================================================================
+  (function patchPagarPendentesDefault(){
+
+    // Estado: mostra ou não baixadas (padrão = false = não mostra)
+    window._pagarMostrarBaixadas = false;
+
+    // Sobrescreve filtrarPagarV44 para respeitar o toggle de baixadas
+    var _origFP = window.filtrarPagarV44;
+    window.filtrarPagarV44 = function(){
+      var busca=(document.getElementById('pfBusca')?.value||'').toLowerCase();
+      var despTipoFiltro=document.getElementById('pfDespTipo')?.value||'';
+      var dtIni=document.getElementById('pfDtIni')?.value||'';
+      var dtFim=document.getElementById('pfDtFim')?.value||'';
+      var tipoFiltro=document.getElementById('pfTipo')?.value||'';
+      var hojeStr2=_hoje();
+      var d7=new Date(); d7.setDate(d7.getDate()+7); var d7s=d7.toISOString().split('T')[0];
+      var m3=_mes(); var a3=_ano(); var ma3=a3+'-'+_pad(m3);
+      var mostrarBaixadas = window._pagarMostrarBaixadas;
+
+      var listFull=DATA.pagar.filter(function(p){
+        // Filtros rápidos (Este Mês, Vencidas, etc.) — comportamento original mantido
+        if(typeof _filtroRapidoPagar !== 'undefined' && _filtroRapidoPagar){
+          if(_filtroRapidoPagar==='vencidas') return p.status!=='PAGO'&&p.vencimento<hojeStr2;
+          if(_filtroRapidoPagar==='hoje') return p.status!=='PAGO'&&p.vencimento===hojeStr2;
+          if(_filtroRapidoPagar==='prox7') return p.status!=='PAGO'&&p.vencimento>=hojeStr2&&p.vencimento<=d7s;
+          if(_filtroRapidoPagar==='mes') return p.vencimento&&p.vencimento.startsWith(ma3);
+        }
+        // Filtro de baixadas: se não mostrar, excluir PAGO
+        if(!mostrarBaixadas && p.status==='PAGO') return false;
+        if(despTipoFiltro&&(p.despesaTipo||'fixa')!==despTipoFiltro) return false;
+        if(tipoFiltro&&p.tipo!==tipoFiltro) return false;
+        if(busca&&!(p.descricao||'').toLowerCase().includes(busca)) return false;
+        if(dtIni&&p.vencimento<dtIni) return false;
+        if(dtFim&&p.vencimento>dtFim) return false;
+        return true;
+      }).sort(function(a,b){return (a.vencimento||'').localeCompare(b.vencimento||'');});
+
+      var _PAGE_SIZE2 = (typeof _PAGE_SIZE !== 'undefined') ? _PAGE_SIZE : 20;
+      var _pagPagar2 = (typeof _pagPagar !== 'undefined') ? _pagPagar : 1;
+      var totalReg = listFull.length;
+      var totalPags = Math.max(1, Math.ceil(totalReg/_PAGE_SIZE2));
+      if(_pagPagar2 > totalPags){ _pagPagar2 = totalPags; if(typeof _pagPagar!=='undefined') _pagPagar=_pagPagar2; }
+      var offset = (_pagPagar2-1)*_PAGE_SIZE2;
+      var list = listFull.slice(offset, offset+_PAGE_SIZE2);
+
+      // Total de baixadas (para informação no botão)
+      var totalBaixadas = DATA.pagar.filter(function(p){ return p.status==='PAGO'; }).length;
+      var btnLabel = mostrarBaixadas
+        ? '🙈 Ocultar Baixadas'
+        : '👁 Mostrar Contas Baixadas (' + totalBaixadas + ')';
+      var btnStyle = mostrarBaixadas
+        ? 'background:rgba(0,229,160,.1);color:var(--emerald);border-color:rgba(0,229,160,.3);'
+        : 'background:var(--surface);color:var(--text2);border-color:var(--border2);';
+
+      var h='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);gap:8px;">'+
+        '<span>Exibindo '+list.length+' de '+totalReg+' '+(mostrarBaixadas?'registros':'pendentes')+'</span>'+
+        '<button onclick="window.togglePagarBaixadas()" style="'+btnStyle+'font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid;cursor:pointer;font-weight:600;white-space:nowrap;">'+btnLabel+'</button>'+
+        '</div>'+
+        '<table><tr>'+
+        '<th style="width:36px;"><input type="checkbox" id="sel-todos-pagar" onchange="toggleSelTodosPagar(this.checked)"></th>'+
+        '<th>Data</th><th>Descrição</th><th>Tipo</th><th>F/V</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+      if(!list.length) h+='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento pendente</td></tr>';
+      list.forEach(function(p){
+        var stBadge,cls='';
+        if(p.status==='PAGO'){stBadge='<span class="badge bg-emerald">PAGO</span>';cls='row-paid';}
+        else if(p.vencimento<hojeStr2){stBadge='<span class="dot-venc red"></span><span class="badge bg-coral">VENCIDA</span>';cls='row-overdue';}
+        else if(p.vencimento===hojeStr2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">HOJE</span>';cls='row-today';}
+        else if(p.vencimento&&(function(a,b){var da=new Date(a),db=new Date(b);return Math.round((db-da)/(1000*60*60*24));})(hojeStr2,p.vencimento)<=2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">EM BREVE</span>';}
+        else{stBadge='<span class="dot-venc green"></span><span class="badge bg-gray">PENDENTE</span>';}
+        var dtBadge=(p.despesaTipo||'fixa')==='fixa'?'<span class="badge badge-fixa">📌 Fixa</span>':'<span class="badge badge-variavel">📊 Var.</span>';
+        h+='<tr class="'+cls+'">'+
+          '<td><input type="checkbox" class="sel-check sel-pagar-check" data-id="'+p.id+'" onchange="toggleSelPagar(\''+p.id+'\',this.checked)"></td>'+
+          '<td style="white-space:nowrap;">'+(typeof fmtD==='function'?fmtD(p.vencimento):p.vencimento)+'</td>'+
+          '<td style="font-weight:500;">'+(typeof esc==='function'?esc(p.descricao||'—'):p.descricao||'—')+(p.subtipo?'<span class="subtipo-tag">'+(typeof esc==='function'?esc(p.subtipo):p.subtipo)+'</span>':'')+'</td>'+
+          '<td style="font-size:11px;color:var(--text2);">'+(typeof esc==='function'?esc(p.tipo||'—'):p.tipo||'—')+'</td>'+
+          '<td>'+dtBadge+'</td>'+
+          '<td class="mono c-coral" style="text-align:right;font-weight:600;">'+(typeof fmtR==='function'?fmtR(p.valor):p.valor)+'</td>'+
+          '<td>'+stBadge+'</td>'+
+          '<td style="white-space:nowrap;">'+
+          (p.status!=='PAGO'?'<button class="btn btn-xs btn-emerald" onclick="darBaixaPagar(\''+p.id+'\')">✓ Baixa</button> ':'')+
+          '<button class="btn btn-xs btn-edit" onclick="editarPagar(\''+p.id+'\')">✏</button>'+
+          '<button class="btn btn-xs btn-danger" onclick="excluirPagar(\''+p.id+'\')">🗑</button>'+
+          '</td></tr>';
+      });
+      var totVis=listFull.reduce(function(s,p){return s+p.valor;},0);
+      h+='<tr class="tr-totais">'+
+        '<td colspan="5" style="font-weight:800;color:var(--orange);">TOTAL ('+listFull.length+' registros)</td>'+
+        '<td class="mono c-coral" style="text-align:right;font-weight:800;">'+(typeof fmtR==='function'?fmtR(totVis):totVis)+'</td>'+
+        '<td><span style="font-size:10px;color:var(--text3);">'+listFull.filter(function(p){return p.status==='PAGO';}).length+' pagos</span></td>'+
+        '<td></td></tr></table>';
+      if(typeof renderPaginacao==='function') h += renderPaginacao(totalReg, _pagPagar2, 'setPagPagar', 'pagarTabela');
+      document.getElementById('pagarTabela').innerHTML=h;
+      if(typeof _renderSelBarPagar==='function') _renderSelBarPagar();
+    };
+
+    window.togglePagarBaixadas = function(){
+      window._pagarMostrarBaixadas = !window._pagarMostrarBaixadas;
+      window.filtrarPagarV44();
+    };
+
+  })();
+
+  // ── A RECEBER — exibição padrão apenas pendentes + botão mostrar baixadas ──
+  (function patchReceberPendentesDefault(){
+
+    window._receberMostrarBaixadas = false;
+
+    var _origFR = window.filtrarReceberV44;
+    window.filtrarReceberV44 = function(){
+      var busca=(document.getElementById('rfBusca')?.value||'').toLowerCase();
+      var dtIni=document.getElementById('rfDtIni')?.value||'';
+      var dtFim=document.getElementById('rfDtFim')?.value||'';
+      var tipoFiltro=document.getElementById('rfTipo')?.value||'';
+      var hojeStr2=_hoje();
+      var mostrarBaixadas = window._receberMostrarBaixadas;
+
+      var listFull=DATA.receber.filter(function(r){
+        if(!mostrarBaixadas && r.status==='RECEBIDO') return false;
+        if(tipoFiltro&&r.tipo!==tipoFiltro) return false;
+        if(busca&&!(r.descricao||'').toLowerCase().includes(busca)) return false;
+        if(dtIni&&r.vencimento<dtIni) return false;
+        if(dtFim&&r.vencimento>dtFim) return false;
+        return true;
+      }).sort(function(a,b){return (a.vencimento||'').localeCompare(b.vencimento||'');});
+
+      var _PAGE_SIZE2 = (typeof _PAGE_SIZE !== 'undefined') ? _PAGE_SIZE : 20;
+      var _pagReceber2 = (typeof _pagReceber !== 'undefined') ? _pagReceber : 1;
+      var totalReg = listFull.length;
+      var totalPags = Math.max(1, Math.ceil(totalReg/_PAGE_SIZE2));
+      if(_pagReceber2 > totalPags){ _pagReceber2 = totalPags; if(typeof _pagReceber!=='undefined') _pagReceber=_pagReceber2; }
+      var offset = (_pagReceber2-1)*_PAGE_SIZE2;
+      var list = listFull.slice(offset, offset+_PAGE_SIZE2);
+
+      var totalBaixadas = DATA.receber.filter(function(r){ return r.status==='RECEBIDO'; }).length;
+      var btnLabel = mostrarBaixadas
+        ? '🙈 Ocultar Baixadas'
+        : '👁 Mostrar Contas Baixadas (' + totalBaixadas + ')';
+      var btnStyle = mostrarBaixadas
+        ? 'background:rgba(0,229,160,.1);color:var(--emerald);border-color:rgba(0,229,160,.3);'
+        : 'background:var(--surface);color:var(--text2);border-color:var(--border2);';
+
+      var h='<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);gap:8px;">'+
+        '<span>Exibindo '+list.length+' de '+totalReg+' '+(mostrarBaixadas?'registros':'pendentes')+'</span>'+
+        '<button onclick="window.toggleReceberBaixadas()" style="'+btnStyle+'font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid;cursor:pointer;font-weight:600;white-space:nowrap;">'+btnLabel+'</button>'+
+        '</div>'+
+        '<table><tr>'+
+        '<th style="width:36px;"><input type="checkbox" onchange="toggleSelTodosReceber(this.checked)"></th>'+
+        '<th>Data</th><th>Descrição</th><th>Tipo</th><th>Devedor</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>';
+      if(!list.length) h+='<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Nenhum lançamento pendente</td></tr>';
+      list.forEach(function(r){
+        var stBadge,cls='';
+        if(r.status==='RECEBIDO'){stBadge='<span class="badge bg-emerald">RECEBIDO</span>';cls='row-paid';}
+        else if(r.vencimento<hojeStr2){stBadge='<span class="dot-venc red"></span><span class="badge bg-coral">ATRASO</span>';cls='row-overdue';}
+        else if(r.vencimento===hojeStr2){stBadge='<span class="dot-venc yellow"></span><span class="badge bg-amber">HOJE</span>';cls='row-today';}
+        else{stBadge='<span class="dot-venc green"></span><span class="badge bg-gray">PENDENTE</span>';}
+        h+='<tr class="'+cls+'">'+
+          '<td><input type="checkbox" class="sel-check sel-rec-check" data-id="'+r.id+'" onchange="toggleSelReceber(\''+r.id+'\',this.checked)"></td>'+
+          '<td>'+(typeof fmtD==='function'?fmtD(r.vencimento):r.vencimento)+'</td>'+
+          '<td style="font-weight:500;">'+(typeof esc==='function'?esc(r.descricao||'—'):r.descricao||'—')+(r.subtipo?'<span class="subtipo-tag" style="background:rgba(0,229,160,.1);color:var(--emerald);">'+(typeof esc==='function'?esc(r.subtipo):r.subtipo)+'</span>':'')+'</td>'+
+          '<td style="font-size:11px;color:var(--text2);">'+(typeof esc==='function'?esc(r.tipo||'—'):r.tipo||'—')+'</td>'+
+          '<td style="font-size:11px;color:var(--text2);">'+(typeof esc==='function'?esc(r.devedor||'—'):r.devedor||'—')+'</td>'+
+          '<td class="mono c-emerald" style="text-align:right;font-weight:600;">'+(typeof fmtR==='function'?fmtR(r.valor):r.valor)+'</td>'+
+          '<td>'+stBadge+'</td>'+
+          '<td style="white-space:nowrap;">'+
+          (r.status!=='RECEBIDO'?'<button class="btn btn-xs btn-primary" onclick="darBaixaReceber(\''+r.id+'\')">✓ Baixa</button> ':'')+
+          '<button class="btn btn-xs btn-edit" onclick="editarReceber(\''+r.id+'\')">✏</button>'+
+          '<button class="btn btn-xs btn-danger" onclick="excluirReceber(\''+r.id+'\')">🗑</button>'+
+          '</td></tr>';
+      });
+      var totVis=listFull.reduce(function(s,r){return s+r.valor;},0);
+      h+='<tr class="tr-totais">'+
+        '<td colspan="5" style="font-weight:800;color:var(--orange);">TOTAL ('+listFull.length+')</td>'+
+        '<td class="mono c-emerald" style="text-align:right;font-weight:800;">'+(typeof fmtR==='function'?fmtR(totVis):totVis)+'</td>'+
+        '<td colspan="2"></td></tr></table>';
+      if(typeof renderPaginacao==='function') h += renderPaginacao(totalReg, _pagReceber2, 'setPagReceber', 'receberTabela');
+      document.getElementById('receberTabela').innerHTML=h;
+      if(typeof _renderSelBarReceber==='function') _renderSelBarReceber();
+    };
+
+    window.toggleReceberBaixadas = function(){
+      window._receberMostrarBaixadas = !window._receberMostrarBaixadas;
+      window.filtrarReceberV44();
+    };
+
+  })();
+
+  // ================================================================
+  // [2] MÓDULO CONTAS — Busca avançada + paginação no extrato de movimentações
+  // ================================================================
+  (function patchContasSearch(){
+    var _PAGE_CONTAS = 20;
+    var _pagContas = 1;
+    var _buscaContas = '';
+
+    window._pagContasState = { pag: 1, busca: '' };
+
+    var _origDetail = renderContaDetail;
+    window.renderContaDetail = function(id){
+      // Renderiza a view original para manter todas as funcionalidades
+      _origDetail.apply(this, arguments);
+
+      // Após renderização, adiciona barra de busca e paginação ao extrato
+      setTimeout(function(){
+        var contaDetailEl = document.getElementById('contaDetail');
+        if(!contaDetailEl) return;
+        var tableWrap = contaDetailEl.querySelector('.table-wrap');
+        if(!tableWrap) return;
+
+        // Evitar re-inserção
+        if(document.getElementById('contaSearchBar')) return;
+
+        // Criar barra de busca acima do extrato
+        var searchBar = document.createElement('div');
+        searchBar.id = 'contaSearchBar';
+        searchBar.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;';
+        searchBar.innerHTML =
+          '<input id="csBusca" placeholder="🔍 Buscar por descrição, categoria, tipo, valor, data..." '+
+          'style="flex:1;min-width:220px;padding:8px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:12px;" '+
+          'oninput="window._filtrarContaExtrato()">'+
+          '<button class="btn btn-sm" onclick="window._filtrarContaExtrato(true)" style="white-space:nowrap;">✕ Limpar</button>';
+        tableWrap.parentNode.insertBefore(searchBar, tableWrap);
+
+        // Aplicar filtro inicial (mostra tudo)
+        window._contaDetailId = id;
+        window._filtrarContaExtrato();
+      }, 60);
+    };
+
+    window._filtrarContaExtrato = function(limpar){
+      if(limpar){
+        var inp = document.getElementById('csBusca');
+        if(inp) inp.value = '';
+      }
+      var id = window._contaDetailId;
+      if(!id) return;
+      var c = DATA.contas.find(function(x){ return x.id===id; });
+      if(!c) return;
+      var busca = ((document.getElementById('csBusca')||{}).value||'').toLowerCase().trim();
+      var showAnul = window._showAnul||false;
+
+      var movs = DATA.movimentacoes.filter(function(m){
+        if(m.contaId!==id) return false;
+        if(m.tipo==='Transferência') return false;
+        if(!showAnul && m.status==='ANULADO') return false;
+        if(busca){
+          var txt = [
+            m.descricao||'', m.tipo||'', m.subtipo||'',
+            m.fornecedor||'', m.obs||'',
+            String(m.valor||''), m.data||''
+          ].join(' ').toLowerCase();
+          if(!txt.includes(busca)) return false;
+        }
+        return true;
+      }).sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
+
+      var totalReg = movs.length;
+      var _pagC = window._pagContasState.pag||1;
+      var totalPags = Math.max(1, Math.ceil(totalReg/_PAGE_CONTAS));
+      if(_pagC > totalPags) _pagC = totalPags;
+      window._pagContasState.pag = _pagC;
+      var offset = (_pagC-1)*_PAGE_CONTAS;
+      var list = movs.slice(offset, offset+_PAGE_CONTAS);
+
+      var tableWrap = document.querySelector('#contaDetail .table-wrap');
+      if(!tableWrap) return;
+
+      var rows = '';
+      if(!list.length){
+        rows = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">'+(busca?'Nenhum resultado para "'+busca+'"':'Nenhuma movimentação')+'</td></tr>';
+      } else {
+        rows = list.map(function(m){
+          var isAnul=m.status==='ANULADO';
+          var rowCls=isAnul?'row-anulado':'';
+          var badge=isAnul?'<span class="badge badge-anulado">ANULADO</span>':'<span class="badge badge-ativo">ATIVO</span>';
+          var cor=m.tipoOp==='RECEITA'?'c-emerald':'c-coral';
+          var sinal=m.tipoOp==='RECEITA'?'+':'-';
+          var fD=typeof fmtD==='function'?fmtD:function(d){return d;};
+          var fR=typeof fmtR==='function'?fmtR:function(v){return v;};
+          var es=typeof esc==='function'?esc:function(v){return v;};
+          return '<tr class="'+rowCls+'">'+
+            '<td style="white-space:nowrap;">'+fD(m.data)+'</td>'+
+            '<td><span class="badge '+(m.tipoOp==='RECEITA'?'bg-emerald':'bg-coral')+'">'+m.tipoOp+'</span></td>'+
+            '<td style="font-weight:500;">'+es(m.descricao||'—')+'</td>'+
+            '<td style="font-size:11px;color:var(--text2);">'+es(m.tipo||'—')+'</td>'+
+            '<td style="font-size:10px;">'+(m.subtipo?'<span class="subtipo-tag" style="'+(m.tipoOp==='RECEITA'?'background:rgba(0,229,160,.1);color:var(--emerald);border-color:rgba(0,229,160,.2);':'')+'">'+es(m.subtipo)+'</span>':'<span style="color:var(--text4);">—</span>')+'</td>'+
+            '<td class="mono '+cor+'" style="text-align:right;font-weight:700;">'+sinal+fR(m.valor)+'</td>'+
+            '<td>'+badge+'</td>'+
+            '<td style="white-space:nowrap;">'+
+            (!isAnul?'<button class="btn btn-xs btn-edit" onclick="editarMovimentacao(\''+m.id+'\')">✏</button> <button class="btn btn-xs btn-amber" onclick="anularMovimentacao(\''+m.id+'\')" title="Anular">⊘</button>':'')+
+            '<button class="btn btn-xs btn-danger" onclick="excluirMovimentacao(\''+m.id+'\')">🗑</button>'+
+            '</td></tr>';
+        }).join('');
+      }
+
+      // Paginação
+      var pagHtml = '';
+      if(totalPags > 1){
+        pagHtml = '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0;font-size:12px;">';
+        if(_pagC > 1) pagHtml += '<button class="btn btn-xs" onclick="window._setPagContas('+(_pagC-1)+')">‹ Anterior</button>';
+        for(var pp=Math.max(1,_pagC-2);pp<=Math.min(totalPags,_pagC+2);pp++){
+          pagHtml += '<button class="btn btn-xs'+(pp===_pagC?' btn-primary':'')+'" onclick="window._setPagContas('+pp+')">'+pp+'</button>';
+        }
+        if(_pagC < totalPags) pagHtml += '<button class="btn btn-xs" onclick="window._setPagContas('+(_pagC+1)+')">Próxima ›</button>';
+        pagHtml += '<span style="color:var(--text3);margin-left:6px;">Pág. '+_pagC+'/'+totalPags+' ('+totalReg+' registros)</span></div>';
+      } else if(totalReg > 0){
+        pagHtml = '<div style="padding:8px 12px;font-size:10px;color:var(--text3);">'+totalReg+' registro(s)</div>';
+      }
+
+      var infoBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);font-size:10px;color:var(--text3);">'+
+        '<span>Exibindo '+list.length+' de '+totalReg+' movimentações'+(busca?' (filtradas)':'')+'</span>'+
+        '</div>';
+
+      tableWrap.innerHTML = infoBar +
+        '<table><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th>Subtipo</th><th style="text-align:right;">Valor</th><th>Status</th><th>Ações</th></tr>'+
+        rows+'</table>'+pagHtml;
+    };
+
+    window._setPagContas = function(p){ window._pagContasState.pag=p; window._filtrarContaExtrato(); };
+
+    // Ao trocar de conta, resetar paginação e busca
+    var _origSC = window.selectConta;
+    window.selectConta = function(id){
+      window._pagContasState = { pag:1, busca:'' };
+      window._contaDetailId = id;
+      if(_origSC) _origSC.apply(this, arguments);
+    };
+
+  })();
+
+  // ================================================================
+  // [3] CARTÃO — vencimento pós-fechamento = 2º mês subsequente (dia 05)
+  // [4] CARTÃO — controle de duplicidade ao lançar em A Pagar
+  // ================================================================
+  (function patchCartaoVencimentoPos(){
+
+    // Calcula o vencimento correto para novos gastos:
+    // Se a fatura foi zerada (DATA.historicoFatura tem entrada com fechamento no mês atual
+    // ou o ciclo ativo não é o mês atual), usa o 2º mês subsequente.
+    function calcularVencimentoGasto(dataDotGasto){
+      var d = new Date(dataDotGasto);
+      var gMes = d.getMonth()+1;
+      var gAno = d.getFullYear();
+
+      // Verifica se houve fechamento de fatura no mesmo mês do gasto
+      var hist = DATA.historicoFatura || [];
+      var fechouNesteMes = hist.some(function(f){
+        return parseInt(f.mes,10)===gMes && parseInt(f.ano,10)===gAno;
+      });
+
+      var vMes, vAno;
+      if(fechouNesteMes){
+        // Pós-fechamento: vencimento = 2º mês subsequente
+        vMes = gMes + 2;
+        vAno = gAno;
+        if(vMes > 12){ vMes -= 12; vAno += 1; }
+        if(vMes > 12){ vMes -= 12; vAno += 1; }
+      } else {
+        // Normal: vencimento = mês seguinte
+        vMes = gMes === 12 ? 1 : gMes + 1;
+        vAno = gMes === 12 ? gAno + 1 : gAno;
+      }
+      return vAno + '-' + _pad(vMes) + '-05';
+    }
+
+    // Função de verificação de duplicidade
+    function jaExisteLancamentoPagar(gastoCartaoId, valor, vencimento){
+      return (DATA.pagar||[]).some(function(p){
+        if(p.gastoCartaoId === gastoCartaoId) return true;
+        // Dupla verificação por valor+vencimento+origem para gastos sem id referenciado
+        if(p.origem==='CARTAO' && p.valor===valor && p.vencimento===vencimento &&
+           Math.abs(new Date(p.criadoEm||0) - new Date()) < 5000) return true;
+        return false;
+      });
+    }
+
+    // Sobrescrever modalGastoCartaoV10 para aplicar nova regra de vencimento e anti-duplicidade
+    var _origModal = window.modalGastoCartaoV10;
+    window.modalGastoCartaoV10 = function(tipoNome){
+      // Usa modal original, mas sobrescreve o handler de confirmação
+      var tiposDesp=(DATA.tipos||[]).filter(function(t){return t.classificacao==='DESPESA';});
+      var subs=(DATA.subTipos||[]).filter(function(s){return s.tipoNome===tipoNome;});
+      var subHtml=subs.length?'<div class="mrow single"><div><label>Subtipo</label><select id="gcSubtipo10"><option value="">—</option>'+subs.map(function(s){return '<option value="'+( typeof esc==='function'?esc(s.nome):s.nome)+'">'+( typeof esc==='function'?esc(s.nome):s.nome)+'</option>';}).join('')+'</select></div></div>':'';
+      var emoji = tipoNome;
+      var hoje2 = typeof hoje==='function'?hoje():_hoje();
+      var h='<div class="mrow"><div><label>Valor R$</label><input id="gcVal10" type="number" step="0.01" min="0.01" placeholder="0,00"></div>'+
+        '<div><label>Data</label><input id="gcDt10" type="date" value="'+hoje2+'"></div></div>'+
+        subHtml+
+        '<div class="mrow single"><div><label>Descrição</label><input id="gcDesc10" placeholder="'+tipoNome+'"></div></div>';
+
+      if(typeof openModal==='function') openModal(emoji+' '+tipoNome+' — Registrar Gasto','💳',h,function(){
+        var val=parseFloat(document.getElementById('gcVal10').value);
+        if(!val||val<=0) return (typeof toast==='function'?toast:showToast)('⚠️ Informe o valor','var(--amber)');
+        var dataGasto=document.getElementById('gcDt10').value;
+        var gMes=new Date(dataGasto).getMonth()+1, gAno=new Date(dataGasto).getFullYear();
+        var subtipo=(document.getElementById('gcSubtipo10')||{}).value||'';
+        var desc=document.getElementById('gcDesc10').value||tipoNome;
+        var novoId = typeof genId==='function'?genId('GC'):'GC'+Date.now();
+        var novoGasto={
+          id:novoId, tipoNome:tipoNome, subtipo:subtipo,
+          categoriaId:(DATA.categoriasCartao||[]).find(function(c){return c.nome===tipoNome;})||null,
+          valor:val, data:dataGasto, mes:gMes, ano:gAno, descricao:desc, status:'pendente',
+          criadoEm:new Date().toISOString()
+        };
+        DATA.gastosCartao.push(novoGasto);
+
+        // Calcular vencimento com nova regra
+        var venc = calcularVencimentoGasto(dataGasto);
+
+        // Anti-duplicidade: só registra em A Pagar se não houver lançamento para este gasto
+        if(!jaExisteLancamentoPagar(novoId, val, venc)){
+          var pgId = typeof genId==='function'?genId('PG'):'PG'+Date.now();
+          DATA.pagar.push({
+            id:pgId, vencimento:venc,
+            descricao:'💳 Cartão: '+desc+(subtipo?' ('+subtipo+')':''),
+            tipo:tipoNome, subtipo:subtipo, fornecedor:'Fatura Cartão',
+            valor:val, status:'PENDENTE', despesaTipo:'variavel',
+            origem:'CARTAO', gastoCartaoId:novoId,
+            criadoEm:new Date().toISOString()
+          });
+        }
+
+        if(typeof save==='function') save(true);
+        if(typeof renderCartao==='function') renderCartao();
+        var toastFn = typeof toast==='function'?toast:showToast;
+        toastFn('✅ Gasto registrado em '+tipoNome+(subtipo?' / '+subtipo:'')+' · Vencimento: '+venc.split('-').reverse().join('/'));
+        if(typeof closeAllModals==='function') closeAllModals();
+      });
+    };
+
+    // Patch do zerarFatura final: após fechar fatura, registrar a data de fechamento
+    // para que novos gastos usem o 2º mês subsequente automaticamente via calcularVencimentoGasto
+    var _origZerarFatura = window.zerarFatura;
+    window.zerarFatura = function(){
+      // O zerarFatura existente já registra em DATA.historicoFatura com mes/ano
+      // calcularVencimentoGasto lê esse histórico — não há mais nada a fazer aqui
+      // além de chamar o original e garantir que após o fechamento o vencimento mude.
+      _origZerarFatura.apply(this, arguments);
+    };
+
+  })();
+
+  // ================================================================
+  // [5] PREVISÕES — campo Cartão calculado automaticamente
+  // ================================================================
+  (function patchPrevisaoCartaoAuto(){
+
+    // Calcula o vencimento da próxima fatura do cartão (regra pós-fechamento ou padrão)
+    function _proxVencFatura(){
+      var hoje2 = _hoje();
+      var m2 = _mes(), a2 = _ano();
+      var hist = DATA.historicoFatura || [];
+      var fechouEsteMes = hist.some(function(f){
+        return parseInt(f.mes,10)===m2 && parseInt(f.ano,10)===a2;
+      });
+      var vMes, vAno;
+      if(fechouEsteMes){
+        vMes = m2 + 2; vAno = a2;
+        if(vMes > 12){ vMes -= 12; vAno += 1; }
+        if(vMes > 12){ vMes -= 12; vAno += 1; }
+      } else {
+        vMes = m2 === 12 ? 1 : m2 + 1;
+        vAno = m2 === 12 ? a2 + 1 : a2;
+      }
+      return vAno + '-' + _pad(vMes) + '-05';
+    }
+
+    // Soma dos itens em A Pagar vinculados ao vencimento da próxima fatura do cartão
+    function _totalProxFaturaEmAPagar(){
+      var venc = _proxVencFatura();
+      return (DATA.pagar||[]).filter(function(p){
+        return p.vencimento===venc && p.origem==='CARTAO' && p.status!=='PAGO';
+      }).reduce(function(s,p){ return s+(p.valor||0); }, 0);
+    }
+
+    // Patch do renderPrevisoes: após renderizar, preenche o campo "Cartão" se existir
+    var _origRP = window.renderPrevisoes;
+    window.renderPrevisoes = function(){
+      _origRP.apply(this, arguments);
+      setTimeout(function(){
+        _preencherCampoCartaoPrevisoes();
+      }, 200);
+    };
+
+    // Função que preenche o campo de cartão nas previsões
+    function _preencherCampoCartaoPrevisoes(){
+      // Procura inputs de previsão que correspondam a tipos de cartão
+      var tiposCartao = ['CARTÃO','CARTAO','Cartão','Cartao'];
+      var totalAuto = _totalProxFaturaEmAPagar();
+      if(totalAuto <= 0) return; // só preenche se há valor calculado
+
+      // Busca o input correspondente ao tipo de cartão/fatura no formulário de previsões
+      tiposCartao.forEach(function(tnome){
+        var encoded = encodeURIComponent(tnome);
+        var inp = document.getElementById('prev_'+encoded);
+        if(inp && (!inp.value || parseFloat(inp.value)===0)){
+          inp.value = totalAuto.toFixed(2);
+          inp.title = 'Calculado automaticamente a partir da próxima fatura do cartão (vencimento: '+_proxVencFatura().split('-').reverse().join('/')+')';
+          inp.style.borderColor = 'var(--sky)';
+          // Atualiza resumo se função disponível
+          var mesEdit = (document.getElementById('prevMesEdit')||{}).value;
+          if(mesEdit && typeof n9ResumoPrev==='function') n9ResumoPrev(mesEdit);
+        }
+      });
+
+      // Também considera tipos que correspondem a "Fatura" ou "Cartão de Crédito"
+      ['Fatura Cartão','Fatura Cartao','Cartão de Crédito','Cartao de Credito'].forEach(function(tnome){
+        var encoded = encodeURIComponent(tnome);
+        var inp = document.getElementById('prev_'+encoded);
+        if(inp && (!inp.value || parseFloat(inp.value)===0)){
+          inp.value = totalAuto.toFixed(2);
+          inp.title = 'Calculado automaticamente (próxima fatura · ' + _proxVencFatura().split('-').reverse().join('/') + ')';
+          inp.style.borderColor = 'var(--sky)';
+          var mesEdit = (document.getElementById('prevMesEdit')||{}).value;
+          if(mesEdit && typeof n9ResumoPrev==='function') n9ResumoPrev(mesEdit);
+        }
+      });
+    }
+
+    // Expor função para uso externo
+    window._preencherCampoCartaoPrevisoes = _preencherCampoCartaoPrevisoes;
+    window._totalProxFaturaCartao = _totalProxFaturaEmAPagar;
+    window._proxVencFaturaCartao = _proxVencFatura;
+
+  })();
+
+  console.log('⬡ Nexus One v12.0 aplicado:');
+  console.log('  ✓ [1] A Pagar / A Receber: exibição padrão somente pendentes + botão "Mostrar Contas Baixadas"');
+  console.log('  ✓ [2] Módulo Contas: busca avançada por múltiplos campos + paginação no extrato');
+  console.log('  ✓ [3] Cartão: vencimento pós-fechamento → 2º mês subsequente (dia 05)');
+  console.log('  ✓ [4] Cartão: anti-duplicidade ao lançar gastos em A Pagar');
+  console.log('  ✓ [5] Previsões: campo Cartão preenchido automaticamente via próxima fatura');
+
+})();
+</script>
+<script>
+// ================================================================
+// Nexus One v12.1 — Correção Completa: Drive / Backup / Importação / Restauração
+//
+// Problemas identificados e corrigidos:
+//  [A] OAuth "O Google não verificou este app" — Client ID hardcoded de projeto não verificado.
+//      Solução: campo editável para o usuário informar o próprio Client ID + instrução clara.
+//  [B] Cadeia de sobrescritas de saveToGDrive/restoreFromGDrive em múltiplas versões
+//      gerava comportamento imprevisível. Solução: versão única definitiva no final.
+//  [C] restoreFromGDrive v9.1 sem verificação de fileR.ok antes de parsear JSON.
+//  [D] importBackup original chamava loadData() após setar DATA, perdendo a importação.
+//      (já corrigido no v10.1 — garantido que essa versão prevalece).
+//  [E] _autoRestoreOnLogin usava confirm() assíncrono podendo interferir com a inicialização.
+//      Solução: prompt não-bloqueante via openModal quando disponível.
+//  [F] checkOAuthReturn processa o token antes do DATA estar carregado.
+//      Solução: defer para após o DOMContentLoaded / init().
+//  [G] Validação e mensagens de erro/sucesso padronizadas e precisas.
+//  [H] exportBackup: validação pós-geração com contagem de todos os módulos.
+//  [I] Proteção contra token expirado em _getDriveFileId/_uploadToDrive já estava presente,
+//      mas a versão final unificada garante que todas as rotas usam a mesma lógica.
+// ================================================================
+(function nexusDriveFixV121(){
+  'use strict';
+
+  // ── Aguarda o DOM estar pronto antes de fazer qualquer coisa relacionada ao Drive ──
+  function _whenReady(fn){
+    if(document.readyState==='loading'){
+      document.addEventListener('DOMContentLoaded', fn);
+    } else {
+      fn();
+    }
+  }
+
+  // ── Lista completa de todos os módulos de dados ──
+  var _ALL_KEYS = [
+    'contas','movimentacoes','pagar','receber',
+    'gastosCartao','objetivos','tipos','subTipos',
+    'categoriasCartao','metasGasto','historicoFatura',
+    'auditoria','terceiros','movTerceiros','previsoes','transferencias'
+  ];
+
+  // ── Geração de resumo detalhado do backup ──
+  function _resumoBackup(d){
+    var linhas = [
+      'Contas bancárias: '     + (d.contas||[]).length,
+      'Movimentações: '        + (d.movimentacoes||[]).length,
+      'A Pagar: '              + (d.pagar||[]).length,
+      'A Receber: '            + (d.receber||[]).length,
+      'Gastos Cartão: '        + (d.gastosCartao||[]).length,
+      'Histórico Faturas: '    + (d.historicoFatura||[]).length,
+      'Objetivos: '            + (d.objetivos||[]).length,
+      'Previsões: '            + (d.previsoes||[]).length,
+      'Transferências: '       + (d.transferencias||[]).length,
+      'Terceiros (contas): '   + (d.terceiros||[]).length,
+      'Terceiros (movimentos): '+(d.movTerceiros||[]).length,
+      'Auditoria: '            + (d.auditoria||[]).length,
+      'Tipos de despesa: '     + (d.tipos||[]).length,
+      'SubTipos: '             + (d.subTipos||[]).length,
+      'Categorias Cartão: '    + (d.categoriasCartao||[]).length,
+      'Ciclo Cartão: incluído',
+      'Configurações: incluídas'
+    ];
+    return linhas.join('\n');
+  }
+
+  // ── Contagem total de registros ──
+  function _totalRegistros(d){
+    return _ALL_KEYS.reduce(function(s,k){ return s+(Array.isArray(d[k])?d[k].length:0); }, 0);
+  }
+
+  // ── Validação mínima de backup ──
+  function _isValidBackup(d){
+    if(!d || typeof d !== 'object') return false;
+    var validos = ['contas','movimentacoes','pagar','receber'].filter(function(k){
+      return Array.isArray(d[k]);
+    });
+    return validos.length >= 2;
+  }
+
+  // ── Normalização segura (usa normalizarDados se disponível, senão básica) ──
+  function _normalizar(raw){
+    var clone = JSON.parse(JSON.stringify(raw||{}));
+    if(typeof normalizarDados === 'function'){
+      try{ return normalizarDados(clone); } catch(e){ console.warn('[v12.1] normalizarDados erro:', e); }
+    }
+    _ALL_KEYS.forEach(function(k){ if(!Array.isArray(clone[k])) clone[k]=[]; });
+    if(!clone.config || typeof clone.config !== 'object') clone.config={};
+    var cfgDef = {nome:'',rendaMensal:0,diaFechamento:15,driveDismissed:false,googleClientId:'',driveConnected:false};
+    Object.keys(cfgDef).forEach(function(k){ if(clone.config[k]===undefined) clone.config[k]=cfgDef[k]; });
+    if(!clone.cartaoCicloAtual || typeof clone.cartaoCicloAtual!=='object')
+      clone.cartaoCicloAtual = {mes:new Date().getMonth()+1, ano:new Date().getFullYear()};
+    return clone;
+  }
+
+  // ── Helper para mostrar diálogo de confirmação não-bloqueante quando possível ──
+  function _confirmar(mensagem, onSim, onNao){
+    if(typeof openModal === 'function'){
+      var h = '<div style="white-space:pre-wrap;font-size:12px;color:var(--text2);line-height:1.6;max-height:50vh;overflow-y:auto;">'+mensagem+'</div>';
+      openModal('Confirmar Restauração','⚠️',h, onSim, 'Restaurar', false);
+      if(onNao) {
+        // Patch do botão cancelar para chamar onNao
+        setTimeout(function(){
+          var btns = document.querySelectorAll('.modal-overlay .modal-footer .btn:not(.btn-primary)');
+          if(btns.length){
+            btns[btns.length-1].addEventListener('click', onNao, {once:true});
+          }
+        }, 80);
+      }
+    } else {
+      if(confirm(mensagem)){ onSim(); } else { if(onNao) onNao(); }
+    }
+  }
+
+  // ================================================================
+  // [A] OAUTH — Conexão com Drive usando Client ID do próprio usuário
+  // O Client ID hardcoded pertence ao desenvolvedor e não é verificado.
+  // O sistema agora usa o Client ID configurado pelo próprio usuário.
+  // ================================================================
+  function _getClientId(){
+    // Prioridade: configuração do usuário → fallback para o hardcoded (com aviso)
+    var userClientId = (DATA && DATA.config && DATA.config.googleClientId
+      ? DATA.config.googleClientId.trim() : '');
+    if(userClientId) return userClientId;
+    // Retorna o Client ID padrão, mas com aviso no console
+    console.warn(
+      '[NexusDrive] Usando Client ID padrão (não verificado pelo Google). ' +
+      'Para evitar o aviso "O Google não verificou este app", configure seu próprio ' +
+      'Client ID OAuth 2.0 em Configurações > Google Drive.'
+    );
+    return typeof GOOGLE_CLIENT_ID !== 'undefined' ? GOOGLE_CLIENT_ID : '';
+  }
+
+  // Sobrescreve connectGDrive para usar o Client ID correto
+  window.connectGDrive = function(){
+    var clientId = _getClientId();
+    if(!clientId){
+      showToast('⚠️ Configure o Client ID do Google OAuth em Configurações antes de conectar.','var(--amber)',5000);
+      if(typeof navigateTo === 'function') navigateTo('config');
+      return;
+    }
+    var scope = 'https://www.googleapis.com/auth/drive.file';
+    var redirectUri = window.location.origin + window.location.pathname;
+    var url = 'https://accounts.google.com/o/oauth2/v2/auth'
+      + '?client_id=' + encodeURIComponent(clientId)
+      + '&redirect_uri=' + encodeURIComponent(redirectUri)
+      + '&response_type=token'
+      + '&scope=' + encodeURIComponent(scope)
+      + '&prompt=consent';
+    console.log('[NexusDrive] Iniciando autenticação OAuth com Client ID:', clientId.substring(0,20)+'...');
+    window.open(url, '_self');
+  };
+
+  // ================================================================
+  // [B/C/F] OAUTH RETURN — Processar token após redirecionamento do Google
+  // Corrigi: executa após DOM pronto para garantir que DATA e funções estejam disponíveis
+  // ================================================================
+  _whenReady(function(){
+    // Pequeno delay para garantir que init() foi chamado e DATA está carregado
+    setTimeout(function(){
+      var hash = window.location.hash;
+      if(!hash || !hash.includes('access_token')) return;
+      var params = new URLSearchParams(hash.slice(1));
+      var token = params.get('access_token');
+      if(!token) return;
+
+      // Limpar o hash da URL imediatamente para evitar re-processamento
+      history.replaceState(null, null, window.location.pathname + window.location.search);
+
+      // Verificar se o token já foi processado (evita dupla execução)
+      if(window._driveAccessToken === token) return;
+
+      window._driveAccessToken = token;
+      if(typeof DATA !== 'undefined' && DATA.config){
+        DATA.config.driveConnected = true;
+      }
+      if(typeof save === 'function') save(true);
+      if(typeof updateDriveStatus === 'function') updateDriveStatus();
+
+      console.log('[NexusDrive v12.1] Token OAuth recebido e processado após DOM pronto.');
+      showToast('✅ Google Drive conectado com sucesso!','var(--emerald)',4000);
+
+      // Verificar dados existentes no Drive de forma não-bloqueante
+      setTimeout(function(){
+        _verificarDadosDriveNaoBlockante();
+      }, 600);
+
+    }, 300); // aguarda init()
+  });
+
+  // ================================================================
+  // [E] AUTO-RESTORE NÃO BLOQUEANTE — usa openModal ao invés de confirm()
+  // ================================================================
+  async function _verificarDadosDriveNaoBlockante(){
+    if(!window._driveAccessToken) return;
+    console.log('[NexusDrive v12.1] Verificando dados no Drive...');
+    try{
+      var fileId = await _getDriveFileId();
+      if(!fileId){
+        console.log('[NexusDrive v12.1] Nenhum arquivo no Drive. Iniciando auto-sync.');
+        _iniciarAutoSync();
+        return;
+      }
+      var r = await fetch(
+        'https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',
+        { headers:{ 'Authorization':'Bearer '+window._driveAccessToken } }
+      );
+      if(!r.ok){
+        console.warn('[NexusDrive v12.1] Não foi possível ler o arquivo do Drive (HTTP '+r.status+'). Iniciando auto-sync local.');
+        _iniciarAutoSync();
+        return;
+      }
+      var text = await r.text();
+      var parsed;
+      try{ parsed = JSON.parse(text); } catch(e){
+        console.warn('[NexusDrive v12.1] Arquivo do Drive inválido. Iniciando sync local.');
+        _iniciarAutoSync();
+        return;
+      }
+      if(!_isValidBackup(parsed)){
+        console.warn('[NexusDrive v12.1] Arquivo do Drive não é backup válido. Iniciando sync local.');
+        _iniciarAutoSync();
+        return;
+      }
+      // Comparar dados
+      var localTotal = _totalRegistros(DATA);
+      var driveTotal = _totalRegistros(parsed);
+      var temDrive = driveTotal > 0;
+      var saoIguais = localTotal === driveTotal;
+
+      if(!temDrive || saoIguais){
+        console.log('[NexusDrive v12.1] Dados em sincronia. Iniciando auto-sync.');
+        if(typeof _lastSyncHash !== 'undefined') window._lastSyncHash = _dataHash();
+        _iniciarAutoSync();
+        return;
+      }
+
+      // Dados diferentes — perguntar usando modal não-bloqueante
+      var msg = 'Encontramos dados no Google Drive:\n\n'+_resumoBackup(parsed)+
+        '\n\n─────────────────────────\nDados locais atuais: '+localTotal+' registros\nDados no Drive: '+driveTotal+' registros\n\nDeseja restaurar os dados do Drive?\n(Os dados locais atuais serão substituídos)';
+
+      _confirmar(msg,
+        function(){ // SIM — restaurar do Drive
+          var norm = _normalizar(parsed);
+          DATA = norm;
+          if(typeof save==='function') save(true);
+          if(typeof navigateTo==='function') navigateTo('dashboard');
+          if(typeof _dataHash==='function') window._lastSyncHash = _dataHash();
+          showToast('✅ Dados restaurados do Google Drive! ('+_totalRegistros(norm)+' registros)','var(--emerald)',5000);
+          _iniciarAutoSync();
+        },
+        function(){ // NÃO — manter local e forçar upload para o Drive
+          console.log('[NexusDrive v12.1] Usuário optou por manter dados locais. Sincronizando para o Drive...');
+          window._lastSyncHash = null; // força upload na próxima iteração
+          _iniciarAutoSync();
+        }
+      );
+    } catch(e){
+      console.error('[NexusDrive v12.1] Erro ao verificar Drive:', e);
+      _iniciarAutoSync();
+    }
+  }
+
+  function _iniciarAutoSync(){
+    if(typeof startAutoSync === 'function'){
+      startAutoSync();
+    }
+  }
+
+  // ================================================================
+  // EXPORTBACKUP FINAL v12.1 — Validação completa pós-geração
+  // ================================================================
+  window.exportBackup = function(){
+    try{
+      // Normalizar antes de exportar
+      var dadosParaExportar = _normalizar(DATA);
+      // Atualizar DATA com versão normalizada
+      DATA = dadosParaExportar;
+      if(typeof save === 'function') save(true);
+
+      // Gerar nome do arquivo
+      var hoje2 = new Date().toISOString().split('T')[0];
+      var nomeUsr = (DATA.config.nome||'nexus').replace(/\s+/g,'-').toLowerCase().replace(/[^a-z0-9-]/g,'');
+      var nomeArq = 'nexus_backup_'+nomeUsr+'_'+hoje2+'.json';
+
+      // Serializar
+      var jsonStr = JSON.stringify(DATA, null, 2);
+
+      // Validação pós-geração
+      var parsedVerif;
+      try{ parsedVerif = JSON.parse(jsonStr); } catch(e){
+        showToast('❌ Erro ao gerar backup: JSON inválido. Contate o suporte.','var(--coral)',5000);
+        console.error('[v12.1 exportBackup] JSON inválido:', e);
+        return;
+      }
+
+      // Contagem de registros por módulo
+      var total = _totalRegistros(parsedVerif);
+      var modulos = _ALL_KEYS.filter(function(k){ return Array.isArray(parsedVerif[k]) && parsedVerif[k].length>0; });
+
+      // Gerar arquivo para download
+      if(typeof dlBlob === 'function'){
+        dlBlob(jsonStr, nomeArq, 'application/json');
+      } else {
+        var blob = new Blob([jsonStr], {type:'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href=url; a.download=nomeArq; a.click();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+      }
+
+      showToast(
+        '✅ Backup realizado com sucesso! '+nomeArq+' — '+total+' registros em '+modulos.length+' módulos.',
+        'var(--emerald)', 5000
+      );
+      console.log('[v12.1 exportBackup] Backup gerado:', nomeArq, '| Total registros:', total, '| Módulos:', modulos);
+    } catch(err){
+      console.error('[v12.1 exportBackup] Erro:', err);
+      showToast('❌ Erro ao gerar backup: '+err.message,'var(--coral)',5000);
+    }
+  };
+
+  // ================================================================
+  // IMPORTBACKUP FINAL v12.1 — Sem loadData(), validação completa
+  // ================================================================
+  window.importBackup = function(){
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.onchange = function(){
+      var f = this.files[0];
+      if(!f) return;
+      var reader = new FileReader();
+      reader.onload = function(e){
+        try{
+          var parsed;
+          try{ parsed = JSON.parse(e.target.result); } catch(jsonErr){
+            return showToast('❌ Arquivo inválido: não é um JSON válido.','var(--coral)',5000);
+          }
+          if(!_isValidBackup(parsed)){
+            return showToast('❌ Arquivo não reconhecido como backup válido do sistema. Verifique se é um arquivo de backup Nexus.','var(--coral)',6000);
+          }
+
+          var norm = _normalizar(parsed);
+          var total = _totalRegistros(norm);
+          var resumo = _resumoBackup(norm);
+
+          _confirmar(
+            'Substituir TODOS os dados pelo arquivo importado?\n\n'+resumo+'\n\n─────────────────────────\nTotal: '+total+' registros',
+            function(){
+              // IMPORTANTE: NÃO chamar loadData() — substituição direta
+              DATA = norm;
+              if(typeof save==='function') save(true);
+              if(typeof navigateTo==='function') navigateTo('dashboard');
+              // Rerender
+              setTimeout(function(){
+                if(typeof renderDashboard==='function') renderDashboard();
+              }, 100);
+              // Validação pós-importação
+              var totalFinal = _totalRegistros(DATA);
+              showToast('✅ Dados importados com sucesso! '+totalFinal+' registros restaurados em todos os módulos.','var(--emerald)',6000);
+              console.log('[v12.1 importBackup] Importação concluída. Total:', totalFinal);
+            }
+          );
+        } catch(err){
+          console.error('[v12.1 importBackup] Erro:', err);
+          showToast('❌ Erro ao importar: arquivo inválido ou corrompido.','var(--coral)',5000);
+        }
+      };
+      reader.onerror = function(){
+        showToast('❌ Erro ao ler o arquivo. Tente novamente.','var(--coral)',4000);
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  };
+
+  // ================================================================
+  // SAVETOGDRIVE FINAL v12.1 — Normaliza, valida conexão, confirma sucesso real
+  // ================================================================
+  window.saveToGDrive = async function(){
+    if(!window._driveAccessToken){
+      showToast('⚠️ Drive não conectado. Clique em "Conectar Drive" em Configurações.','var(--amber)',5000);
+      return;
+    }
+    showToast('☁️ Preparando dados para envio ao Google Drive...','var(--orange)',1500);
+    try{
+      DATA = _normalizar(DATA);
+      if(typeof save==='function') save(true);
+
+      var json = JSON.stringify(DATA, null, 2);
+      var total = _totalRegistros(DATA);
+
+      var ok = await _uploadToDrive(json, false);
+      if(ok){
+        if(typeof _dataHash==='function') window._lastSyncHash = _dataHash();
+        showToast('✅ Backup realizado e sincronizado com o Google Drive! ('+total+' registros)','var(--emerald)',5000);
+        console.log('[v12.1 saveToGDrive] Upload concluído. Registros:', total);
+      } else {
+        showToast('❌ Falha ao enviar para o Drive. Verifique sua conexão e tente novamente.','var(--coral)',5000);
+        console.error('[v12.1 saveToGDrive] _uploadToDrive retornou false.');
+      }
+    } catch(e){
+      console.error('[v12.1 saveToGDrive] Erro:', e);
+      showToast('❌ Erro ao salvar no Drive: '+e.message,'var(--coral)',5000);
+    }
+  };
+
+  // ================================================================
+  // RESTOREFROMDRIVE FINAL v12.1 — Verificação ok, modal, sem loadData()
+  // ================================================================
+  window.restoreFromGDrive = async function(){
+    if(!window._driveAccessToken){
+      showToast('⚠️ Drive não conectado. Conecte primeiro em Configurações.','var(--amber)',5000);
+      return;
+    }
+    showToast('☁️ Buscando backup no Google Drive...','var(--orange)',2000);
+    try{
+      var fileId = await _getDriveFileId();
+      if(!fileId){
+        showToast('⚠️ Nenhum backup encontrado no Google Drive. Faça um backup primeiro.','var(--amber)',5000);
+        return;
+      }
+
+      var r = await fetch(
+        'https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',
+        { headers:{ 'Authorization':'Bearer '+window._driveAccessToken } }
+      );
+
+      // Verificar HTTP antes de parsear
+      if(r.status === 401){
+        if(typeof _handleTokenExpired==='function') _handleTokenExpired();
+        showToast('⚠️ Sessão do Drive expirada. Reconecte e tente novamente.','var(--amber)',6000);
+        return;
+      }
+      if(!r.ok){
+        showToast('❌ Erro ao baixar o arquivo do Drive (HTTP '+r.status+'). Tente novamente.','var(--coral)',5000);
+        return;
+      }
+
+      var text = await r.text();
+      var parsed;
+      try{ parsed = JSON.parse(text); } catch(jsonErr){
+        showToast('❌ Arquivo de backup no Drive está corrompido ou inválido.','var(--coral)',5000);
+        console.error('[v12.1 restoreFromGDrive] JSON inválido:', jsonErr);
+        return;
+      }
+
+      if(!_isValidBackup(parsed)){
+        showToast('❌ Arquivo no Drive não é um backup válido do sistema.','var(--coral)',5000);
+        return;
+      }
+
+      var norm = _normalizar(parsed);
+      var total = _totalRegistros(norm);
+      var resumo = _resumoBackup(norm);
+
+      _confirmar(
+        'Restaurar backup do Google Drive?\nOs dados locais atuais serão substituídos.\n\n'+resumo+'\n\n─────────────────────────\nTotal: '+total+' registros',
+        function(){
+          // Aplicar dados normalizados — sem loadData()
+          DATA = norm;
+          if(typeof save==='function') save(true);
+          if(typeof _dataHash==='function') window._lastSyncHash = _dataHash();
+          if(typeof navigateTo==='function') navigateTo('dashboard');
+          setTimeout(function(){
+            if(typeof renderDashboard==='function') renderDashboard();
+          }, 100);
+          showToast('✅ Dados importados com sucesso! '+total+' registros restaurados do Google Drive.','var(--emerald)',6000);
+          console.log('[v12.1 restoreFromGDrive] Restauração concluída. Registros:', total);
+        }
+      );
+    } catch(e){
+      console.error('[v12.1 restoreFromGDrive] Erro:', e);
+      showToast('❌ Erro ao restaurar do Drive: '+e.message,'var(--coral)',5000);
+    }
+  };
+
+  // ================================================================
+  // AUTOSYNC v12.1 — Garante que o auto-sync usa normalizarDados antes de enviar
+  // ================================================================
+  var _origAutoSyncLoop = window._autoSyncLoop;
+  window._autoSyncLoop = async function(){
+    if(!window._autoSyncEnabled || !window._driveAccessToken || window._syncInProgress) return;
+    var currentHash = (typeof _dataHash==='function') ? _dataHash() : '';
+    if(currentHash && currentHash === window._lastSyncHash) return;
+    window._syncInProgress = true;
+    try{
+      var dadosSync = _normalizar(DATA);
+      DATA = dadosSync;
+      var json = JSON.stringify(DATA, null, 2);
+      var ok = await _uploadToDrive(json, true);
+      if(ok){
+        window._lastSyncHash = currentHash;
+        console.log('[NexusDrive v12.1] Auto-sync concluído:', new Date().toLocaleTimeString('pt-BR'));
+        if(typeof _updateSyncIndicator==='function') _updateSyncIndicator(true);
+      } else if(window._driveAccessToken){
+        console.warn('[NexusDrive v12.1] Falha no auto-sync. Tentará novamente.');
+      }
+    } catch(e){ console.error('[NexusDrive v12.1] Erro auto-sync:', e); }
+    finally{ window._syncInProgress = false; }
+  };
+
+  // Reiniciar o timer de auto-sync com a versão corrigida (se já estava rodando)
+  _whenReady(function(){
+    setTimeout(function(){
+      if(window._autoSyncEnabled && window._driveAccessToken){
+        if(typeof stopAutoSync==='function') stopAutoSync();
+        if(typeof startAutoSync==='function') startAutoSync();
+        console.log('[NexusDrive v12.1] Timer de auto-sync reiniciado com versão corrigida.');
+      }
+    }, 500);
+  });
+
+  // ================================================================
+  // ATUALIZAR PAINEL DE CONFIGURAÇÕES com instrução sobre Client ID
+  // ================================================================
+  _whenReady(function(){
+    setTimeout(function(){
+      // Adiciona nota informativa sobre o Client ID ao lado do campo de configuração
+      var cfClientId = document.getElementById('cfClientId');
+      if(cfClientId && !document.getElementById('driveClientIdNote')){
+        var nota = document.createElement('div');
+        nota.id = 'driveClientIdNote';
+        nota.style.cssText = 'margin-top:8px;padding:10px 14px;background:rgba(56,205,255,.05);border:1px solid rgba(56,205,255,.2);border-radius:8px;font-size:11px;color:var(--sky);line-height:1.5;';
+        nota.innerHTML =
+          '💡 <strong>Para eliminar o aviso "O Google não verificou este app":</strong><br>'+
+          '1. Acesse <a href="https://console.cloud.google.com" target="_blank" style="color:var(--sky);">Google Cloud Console</a><br>'+
+          '2. Crie um projeto → Ative a Drive API → Crie credenciais OAuth 2.0 (tipo: Aplicativo da Web)<br>'+
+          '3. Em "Origens JavaScript autorizadas", adicione a URL onde este sistema está hospedado<br>'+
+          '4. Cole o Client ID gerado no campo acima e clique em Salvar<br>'+
+          '5. Reconecte ao Drive — o aviso de verificação não aparecerá mais';
+        cfClientId.parentNode.parentNode.appendChild(nota);
+      }
+    }, 800);
+  });
+
+  console.log('⬡ Nexus One v12.1 — Correção Drive/Backup/Importação aplicada:');
+  console.log('  ✓ [A] OAuth: Client ID configurável pelo usuário (elimina aviso "não verificado")');
+  console.log('  ✓ [B] Cadeia de sobrescritas de saveToGDrive/restoreFromGDrive unificada');
+  console.log('  ✓ [C] restoreFromGDrive: verificação HTTP antes de parsear JSON');
+  console.log('  ✓ [D] importBackup: sem loadData() que anulava a importação');
+  console.log('  ✓ [E] Auto-restore: modal não-bloqueante ao invés de confirm()');
+  console.log('  ✓ [F] checkOAuthReturn: token processado após DOM/init() prontos');
+  console.log('  ✓ [G] Mensagens de sucesso/erro precisas e padronizadas');
+  console.log('  ✓ [H] exportBackup: validação pós-geração com todos os módulos');
+  console.log('  ✓ [I] Auto-sync: normalização antes de cada upload');
+
+})();
+</script>
 </body>
 </html>
