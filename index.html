@@ -12328,180 +12328,179 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
 </script>
 <script>
 // ================================================================
-// Nexus One v13.0 — ALTERAÇÃO 001: Correção Definitiva do Fluxo de Fatura
+// Nexus One v13.1 — ALTERAÇÃO 001: Correção Definitiva do Fluxo de Fatura
 //
-// Problemas corrigidos:
-//  [1] excluirPagar: ao excluir item de origem CARTAO, marca o gasto com
-//      _pagarExcluidoManualmente=true para impedir recriação automática
-//  [2] normalizarDados / migrarGastosLegados: respeita o flag acima — não
-//      recria lançamentos excluídos manualmente pelo usuário
+// RAIZ DO PROBLEMA IDENTIFICADA:
+//   migrarGastosLegados() (closure privada v11) e normalizarDados() (v10.1)
+//   recriam lançamentos em DATA.pagar para TODO gasto com status !== 'faturado'.
+//   O único guard universal em TODAS as rotas de recriação é:
+//     if(g.status === 'faturado') return;
+//   Portanto a solução correta é atuar nessa propriedade.
+//
+// CORREÇÕES:
+//  [1] excluirPagar: ao excluir item de origem CARTAO, define o gasto
+//      correspondente como status='excluido_manual' — status desconhecido
+//      por todas as rotas de migração, que usam !=='faturado' como guard
+//      mas só redefinem status quando ele é nulo/undefined (não sobrescrevem
+//      um valor já definido). Resultado: nenhuma rota recria o lançamento.
+//
+//  [2] Patch save() antigo (linha ~8922) faz apenas `if(!g.status)` — não
+//      toca em 'excluido_manual'. normalizarDados faz o mesmo. Seguro.
+//
 //  [3] zerarFatura: ao fechar a fatura, REMOVE os lançamentos individuais
-//      pendentes em A Pagar (origem CARTAO) e cria UMA ÚNICA linha consolidada
-//      "Cartão de Crédito Consolidado" com o total — preservando histórico nos
-//      relatórios via DATA.gastosCartao (status faturado)
+//      pendentes em A Pagar vinculados a esta fatura e cria UMA ÚNICA linha
+//      consolidada "Cartão de Crédito Consolidado". Histórico analítico
+//      preservado em DATA.gastosCartao (status='faturado').
 // ================================================================
 (function nexusFaturaV13() {
   'use strict';
 
-  // ── [1] Patch excluirPagar — marca gasto como excluído manualmente ──
-  var _origExcluirPagar = window.excluirPagar;
+  var _pad = function(n) { return n < 10 ? '0' + n : String(n); };
+  var _fmtR = function(v) { return typeof fmtR === 'function' ? fmtR(v) : 'R$ ' + Number(v).toFixed(2); };
+  var _esc  = function(s) { return typeof esc  === 'function' ? esc(s)  : String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var _toast = function(msg, cor, ms) {
+    var fn = typeof showToast === 'function' ? showToast : (typeof toast === 'function' ? toast : function(){});
+    fn(msg, cor || 'var(--emerald)', ms || 3000);
+  };
+
+  // ── [1] Substituição completa de excluirPagar ──────────────────────────────
+  // Intercepta ANTES de qualquer outra lógica: se o item pertence ao cartão,
+  // muda o gasto para status='excluido_manual', bloqueando toda rota de recriação.
   window.excluirPagar = function(id) {
-    // Verificar se é item de cartão antes de confirmar
     var item = (DATA.pagar || []).find(function(p) { return p.id === id; });
-    if (!item) { if (typeof _origExcluirPagar === 'function') _origExcluirPagar(id); return; }
+    if (!item) return;
 
-    var ehCartao = item.origem === 'CARTAO' && item.gastoCartaoId;
-    if (!confirm('Excluir este lançamento?' + (ehCartao ? '\n\nNota: o gasto do cartão será preservado no histórico analítico mas não será recriado em Contas a Pagar.' : ''))) return;
+    var ehCartao = (item.origem === 'CARTAO') && !!item.gastoCartaoId;
+    var msg = 'Excluir este lançamento?';
+    if (ehCartao) msg += '\n\nO gasto original do cartão será mantido no histórico analítico, mas não será recriado em Contas a Pagar.';
+    if (!confirm(msg)) return;
 
-    // Se for item de cartão: marcar o gasto para não ser recriado
+    // BLOQUEIO NA FONTE: mudar status do gasto para 'excluido_manual'
+    // Todas as funções de migração (migrarGastosLegados, normalizarDados v10.1/v11)
+    // só processam gastos com status !== 'faturado' E só redefinem status quando
+    // ele é null/undefined — nunca sobrescrevem 'excluido_manual'.
     if (ehCartao) {
       var gasto = (DATA.gastosCartao || []).find(function(g) { return g.id === item.gastoCartaoId; });
-      if (gasto) {
-        gasto._pagarExcluidoManualmente = true;
+      if (gasto && gasto.status !== 'faturado') {
+        gasto.status = 'excluido_manual';
       }
     }
 
     DATA.pagar = (DATA.pagar || []).filter(function(p) { return p.id !== id; });
     if (typeof save === 'function') save(true);
     if (typeof renderPagar === 'function') renderPagar();
-    var _toast = typeof toast === 'function' ? toast : (typeof showToast === 'function' ? showToast : function(){});
     _toast('🗑 Excluído');
   };
 
-  // ── [2] Patch normalizarDados — respeita _pagarExcluidoManualmente ──
-  // Sobrescreve a migração v11 dentro de normalizarDados para não recriar
-  // lançamentos que o usuário excluiu intencionalmente.
-  // Como normalizarDados é uma closure interna do módulo v10.1, aplicamos
-  // o mesmo bloqueio na migração de gastos legados exposta via navigateTo.
-
-  // Patch migrarGastosLegados (v11 interno ao nexusIntegracaoV11)
-  var _origMigracao = window.navigateTo;
-  // A migração real ocorre via closure — precisamos substituir a lógica de push
-  // Abordagem: após qualquer navigateTo para 'cartao', limpar recriações indevidas
+  // ── [2] Guard reforçado: interceptar migrarGastosLegados via navigateTo ────
+  // migrarGastosLegados é uma closure privada do v11 disparada a cada navegação
+  // ao módulo Cartão. Após ela rodar (50ms), varremos e removemos qualquer
+  // lançamento que tenha sido recriado para um gasto 'excluido_manual'.
+  // Com o status já definido, a migração não deve recriar — este bloco é
+  // uma camada de segurança extra para o caso de código legado interferir.
+  var _navOrig = window.navigateTo;
   window.navigateTo = function(mod) {
-    if (typeof _origMigracao === 'function') _origMigracao.apply(this, arguments);
+    if (typeof _navOrig === 'function') _navOrig.apply(this, arguments);
     if (mod === 'cartao') {
-      // Limpar lançamentos recriados para gastos marcados como excluídos manualmente
       setTimeout(function() {
-        var removidos = 0;
-        (DATA.gastosCartao || []).forEach(function(g) {
-          if (!g._pagarExcluidoManualmente) return;
-          // Remover quaisquer lançamentos em A Pagar gerados para este gasto
-          var antes = (DATA.pagar || []).length;
-          DATA.pagar = (DATA.pagar || []).filter(function(p) {
-            return !(p.gastoCartaoId === g.id && p.status !== 'PAGO');
-          });
-          removidos += antes - (DATA.pagar || []).length;
+        // Remover quaisquer recriações para gastos 'excluido_manual'
+        var antes = (DATA.pagar || []).length;
+        DATA.pagar = (DATA.pagar || []).filter(function(p) {
+          if (!p.gastoCartaoId || p.status === 'PAGO') return true;
+          var gasto = (DATA.gastosCartao || []).find(function(g) { return g.id === p.gastoCartaoId; });
+          return !(gasto && gasto.status === 'excluido_manual');
         });
+        var removidos = antes - (DATA.pagar || []).length;
         if (removidos > 0) {
           if (typeof save === 'function') save(true);
-          console.log('[v13] Limpeza pós-navegação: ' + removidos + ' recriação(ões) bloqueada(s).');
+          console.log('[v13.1] Guard pós-navegação: ' + removidos + ' recriação(ões) de gasto excluído removida(s).');
         }
-      }, 80);
+      }, 120); // 120ms > 50ms do migrarGastosLegados — garante que roda depois
     }
   };
 
-  // Patch de segurança: interceptar save() para limpar recriações antes de persistir
-  var _origSave = window.save;
-  window.save = function() {
-    // Antes de salvar, remover qualquer lançamento recriado indevidamente
-    (DATA.gastosCartao || []).forEach(function(g) {
-      if (!g._pagarExcluidoManualmente) return;
-      DATA.pagar = (DATA.pagar || []).filter(function(p) {
-        return !(p.gastoCartaoId === g.id && p.status !== 'PAGO');
-      });
-    });
-    if (typeof _origSave === 'function') _origSave.apply(this, arguments);
-  };
-
-  // ── [3] Patch zerarFatura — consolidação em UMA linha em A Pagar ──
-  var _origZerarFatura = window.zerarFatura;
+  // ── [3] Substituição completa de zerarFatura ──────────────────────────────
   window.zerarFatura = function() {
-    var m2 = (typeof mes === 'function') ? mes() : new Date().getMonth() + 1;
-    var a2 = (typeof ano === 'function') ? ano() : new Date().getFullYear();
+    var m2 = typeof mes === 'function' ? mes() : new Date().getMonth() + 1;
+    var a2 = typeof ano === 'function' ? ano() : new Date().getFullYear();
+
+    // Somente gastos pendentes (exclui 'faturado' e 'excluido_manual')
     var pendentes = (DATA.gastosCartao || []).filter(function(g) {
-      return g.mes === m2 && g.ano === a2 && g.status !== 'faturado';
+      return g.mes === m2 && g.ano === a2 && g.status === 'pendente';
     });
     var total = pendentes.reduce(function(s, g) { return s + (g.valor || 0); }, 0);
 
     if (!total) {
-      var _toast2 = typeof showToast === 'function' ? showToast : (typeof toast === 'function' ? toast : function(){});
-      _toast2('⚠️ Nenhum gasto pendente na fatura atual', 'var(--amber)');
+      _toast('⚠️ Nenhum gasto pendente na fatura atual', 'var(--amber)');
       return;
     }
 
-    // Calcular vencimento consolidado — dia 5 do mês seguinte ao fechamento
-    var vMes = m2 === 12 ? 1 : m2 + 1;
-    var vAno = m2 === 12 ? a2 + 1 : a2;
-    // Verificar se já houve fechamento neste mês (regra 2º mês subsequente)
+    // Calcular vencimento consolidado (dia 5 do mês seguinte; pós-fechamento → 2º mês)
     var hist = DATA.historicoFatura || [];
     var fechouEsteMes = hist.some(function(f) {
       return parseInt(f.mes, 10) === m2 && parseInt(f.ano, 10) === a2;
     });
+    var vMes, vAno;
     if (fechouEsteMes) {
       vMes = m2 + 2; vAno = a2;
       if (vMes > 12) { vMes -= 12; vAno += 1; }
       if (vMes > 12) { vMes -= 12; vAno += 1; }
+    } else {
+      vMes = m2 === 12 ? 1 : m2 + 1;
+      vAno = m2 === 12 ? a2 + 1 : a2;
     }
-    var pad = function(n) { return n < 10 ? '0' + n : String(n); };
-    var vencConsolidado = vAno + '-' + pad(vMes) + '-05';
+    var vencConsolidado = vAno + '-' + _pad(vMes) + '-05';
 
-    // Montar resumo por tipo para o modal
+    // Resumo por tipo para o modal
     var tiposDesp = (DATA.tipos || []).filter(function(t) { return t.classificacao === 'DESPESA'; });
-    var resumoTiposHtml = '';
+    var resumoHtml = '';
     tiposDesp.forEach(function(t) {
-      var ac = pendentes.filter(function(g) { return g.tipoNome === t.nome; }).reduce(function(s, g) { return s + (g.valor || 0); }, 0);
-      if (ac > 0) resumoTiposHtml += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);"><span>' + (typeof esc === 'function' ? esc(t.nome) : t.nome) + '</span><span class="mono c-amber">' + (typeof fmtR === 'function' ? fmtR(ac) : 'R$ ' + ac.toFixed(2)) + '</span></div>';
+      var ac = pendentes.filter(function(g) { return g.tipoNome === t.nome; })
+                        .reduce(function(s, g) { return s + (g.valor || 0); }, 0);
+      if (ac > 0) {
+        resumoHtml += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);">' +
+          '<span>' + _esc(t.nome) + '</span><span class="mono c-amber">' + _fmtR(ac) + '</span></div>';
+      }
     });
 
-    var fmtR2 = typeof fmtR === 'function' ? fmtR : function(v) { return 'R$ ' + v.toFixed(2); };
-    var h = '<div class="info-block warn"><strong>Total da fatura atual: ' + fmtR2(total) + '</strong><br>' +
+    var h = '<div class="info-block warn">' +
+      '<strong>Total da fatura atual: ' + _fmtR(total) + '</strong><br>' +
       '<small>Vencimento consolidado: <strong>' + vencConsolidado.split('-').reverse().join('/') + '</strong></small><br>' +
-      '<small>Os lançamentos individuais em A Pagar serão substituídos por <strong>uma única linha consolidada</strong>. O histórico analítico é preservado nos relatórios via módulo Cartão.</small></div>' +
-      '<div style="margin-top:12px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:8px;">Resumo por tipo</div>' + resumoTiposHtml + '</div>';
+      '<small>Os lançamentos individuais em A Pagar serão substituídos por <strong>uma única linha consolidada</strong>. ' +
+      'O histórico analítico permanece disponível no módulo Cartão.</small></div>' +
+      '<div style="margin-top:12px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#BCC5D8;font-weight:700;margin-bottom:8px;">Resumo por tipo</div>' +
+      resumoHtml + '</div>';
 
-    var openModalFn = typeof openModal === 'function' ? openModal : null;
-    if (!openModalFn) { console.error('[v13] openModal não disponível'); return; }
-    var genIdFn = typeof genId === 'function' ? genId : function(p) { return p + Math.random().toString(36).substr(2, 9).toUpperCase(); };
+    if (typeof openModal !== 'function') { console.error('[v13.1] openModal não encontrada'); return; }
+    var _genId = typeof genId === 'function' ? genId : function(p) { return p + Math.random().toString(36).substr(2,9).toUpperCase(); };
 
-    openModalFn('Zerar Fatura', '🔄', h, function() {
-      var fid = genIdFn('FAT');
+    openModal('Zerar Fatura', '🔄', h, function() {
+      var fid = _genId('FAT');
 
-      // 1. Marcar gastos pendentes como faturados
-      pendentes.forEach(function(g) {
-        g.status = 'faturado';
-        g.faturaId = fid;
-        // Limpar flag de exclusão manual (fatura fechada — contexto encerrado)
-        delete g._pagarExcluidoManualmente;
-      });
+      // 1. Marcar gastos pendentes como 'faturado'
+      pendentes.forEach(function(g) { g.status = 'faturado'; g.faturaId = fid; });
 
-      // 2. Registrar no histórico de faturas
+      // 2. Registrar no histórico
       DATA.historicoFatura.push({
         id: fid, mes: m2, ano: a2, total: total,
         dataFechamento: new Date().toISOString(),
         vencimento: vencConsolidado
       });
 
-      // 3. Remover TODOS os lançamentos individuais de cartão pendentes vinculados a esta fatura
-      //    (tanto os com gastoCartaoId quanto rascunhos legados do mesmo período)
-      var idsGastosFeched = pendentes.map(function(g) { return g.id; });
+      // 3. Remover lançamentos individuais pendentes desta fatura em A Pagar
+      var idsGastos = pendentes.map(function(g) { return g.id; });
       DATA.pagar = (DATA.pagar || []).filter(function(p) {
-        // Manter: não é cartão
-        if (p.origem !== 'CARTAO') return true;
-        // Manter: já foi pago (baixado pelo usuário antes do fechamento)
-        if (p.status === 'PAGO') return true;
-        // Remover: lançamento individual vinculado a gasto desta fatura
-        if (p.gastoCartaoId && idsGastosFeched.indexOf(p.gastoCartaoId) !== -1) return false;
-        // Remover: rascunho legacy do mesmo período/vencimento de cartão
-        if (p._rascunho) return false;
+        if (p.status === 'PAGO') return true;                                           // já pago — manter
+        if (p._rascunho) return false;                                                  // rascunho legado — remover
+        if (p.gastoCartaoId && idsGastos.indexOf(p.gastoCartaoId) !== -1) return false; // individual desta fatura — remover
         return true;
       });
 
-      // 4. Criar a linha consolidada única em A Pagar
+      // 4. Criar linha consolidada única
       DATA.pagar.push({
-        id: genIdFn('PG'),
+        id: _genId('PG'),
         vencimento: vencConsolidado,
-        descricao: '💳 Cartão de Crédito Consolidado — ' + pad(m2) + '/' + a2,
+        descricao: '💳 Cartão de Crédito Consolidado — ' + _pad(m2) + '/' + a2,
         tipo: 'CARTÃO',
         subtipo: '',
         fornecedor: 'Fatura Cartão',
@@ -12513,35 +12512,34 @@ console.log('  ✓ [BF-3] Módulo Contas: paginação no extrato de movimentaç�
         criadoEm: new Date().toISOString()
       });
 
-      // 5. Limpar rascunhos automáticos legacy
-      DATA.pagar = (DATA.pagar || []).filter(function(p) { return !p._rascunho; });
-
       if (typeof save === 'function') save(true);
       if (typeof renderCartao === 'function') renderCartao();
-      var _toast3 = typeof showToast === 'function' ? showToast : (typeof toast === 'function' ? toast : function(){});
-      _toast3('✅ Fatura fechada e consolidada em A Pagar. Total: ' + fmtR2(total) + ' · Venc.: ' + vencConsolidado.split('-').reverse().join('/'), 'var(--emerald)', 5000);
+      _toast('✅ Fatura fechada! Total: ' + _fmtR(total) + ' · Venc.: ' + vencConsolidado.split('-').reverse().join('/'), 'var(--emerald)', 5000);
       if (typeof closeAllModals === 'function') closeAllModals();
     }, 'Fechar Fatura');
   };
 
-  // ── Limpeza inicial: remover recriações indevidas ao carregar ──
+  // ── Limpeza imediata ao carregar: corrigir dados já persistidos ────────────
+  // Garante que gastos marcados 'excluido_manual' não tenham lançamentos órfãos
   (function limpezaInicial() {
     var removidos = 0;
-    (DATA.gastosCartao || []).forEach(function(g) {
-      if (!g._pagarExcluidoManualmente) return;
-      var antes = (DATA.pagar || []).length;
-      DATA.pagar = (DATA.pagar || []).filter(function(p) {
-        return !(p.gastoCartaoId === g.id && p.status !== 'PAGO');
-      });
-      removidos += antes - (DATA.pagar || []).length;
+    var antes = (DATA.pagar || []).length;
+    DATA.pagar = (DATA.pagar || []).filter(function(p) {
+      if (!p.gastoCartaoId || p.status === 'PAGO') return true;
+      var g = (DATA.gastosCartao || []).find(function(g) { return g.id === p.gastoCartaoId; });
+      return !(g && g.status === 'excluido_manual');
     });
-    if (removidos > 0 && typeof save === 'function') save(true);
+    removidos = antes - (DATA.pagar || []).length;
+    if (removidos > 0) {
+      if (typeof save === 'function') save(true);
+      console.log('[v13.1] Limpeza inicial: ' + removidos + ' lançamento(s) órfão(s) removido(s).');
+    }
   })();
 
-  console.log('⬡ Nexus One v13.0 — ALTERAÇÃO 001 aplicada:');
-  console.log('  ✓ [1] excluirPagar: marca gasto com _pagarExcluidoManualmente — sem recriação automática');
-  console.log('  ✓ [2] normalizarDados / migrarGastosLegados: respeita exclusões manuais');
-  console.log('  ✓ [3] zerarFatura: consolida lançamentos em UMA linha em A Pagar');
+  console.log('⬡ Nexus One v13.1 — ALTERAÇÃO 001 aplicada:');
+  console.log('  ✓ [1] excluirPagar: gasto recebe status="excluido_manual" — bloqueio na fonte, todas as rotas de migração ignoram');
+  console.log('  ✓ [2] Guard reforçado pós-navigateTo cartão: remove recriações residuais (120ms > 50ms da migração)');
+  console.log('  ✓ [3] zerarFatura: consolida em UMA linha em A Pagar; histórico analítico preservado em DATA.gastosCartao');
 
 })();
 </script>
